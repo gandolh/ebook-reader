@@ -27,3 +27,9 @@ typecheck. See [briefs/done/01-monorepo-scaffold.md](briefs/done/01-monorepo-sca
 `convertRequestSchema` (EPUB-only), `convertErrorSchema` (`{error, code}` union).
 Legacy `SUPPORTED_FORMATS`/`Format` preserved for the apps. Typecheck passes.
 See [briefs/done/02-shared-zod-contract.md](briefs/done/02-shared-zod-contract.md).
+
+## [2026-07-02] decision | Pin exact dependency versions (D21)
+
+User: all deps pinned exact (no `^`/`~`), latest stable. Retrofitted root +
+`packages/shared` to installed versions (concurrently 9.2.3, typescript 5.9.3,
+zod 3.25.76). In-flight briefs 03/04 told to pin what they add. Recorded as D21.

@@ -25,6 +25,7 @@ revisit + a `log.md` note.
 | D18 | **No bookmarks/highlights in v1** | Pointless without persistence |
 | D19 | **In-book search IS in v1** | Kept during scoping |
 | D20 | **Tailwind v4** (with `@base-ui/react`) | Matches Base UI's documented examples; greenfield 2026 build |
+| D21 | **Pinned exact dependency versions** (no `^`/`~`), latest stable | Reproducible installs; ranges had already drifted (TS `^5.7.3`→5.9.3) |
 
 ## After-conversion UX (D1 detail)
 Two buttons only: **Download** (save the PDF) and **Go back** (return to
