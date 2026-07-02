@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useReaderStore } from "../../store/reader-store";
+import { useChromeHold } from "./use-auto-hide-chrome";
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +39,11 @@ export function ReaderToolbar({
   rightControls?: ReactNode;
 }) {
   const chromeVisible = useReaderStore((s) => s.chromeVisible);
+  // Keep the chrome from fading out from under the user: hold it visible
+  // while the pointer rests on the toolbar or focus is inside it.
+  const [pointerOver, setPointerOver] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
+  useChromeHold(pointerOver || focusWithin);
 
   return (
     <div
@@ -46,8 +52,18 @@ export function ReaderToolbar({
           ? "translate-y-0 opacity-100"
           : "pointer-events-none translate-y-2 opacity-0"
       }`}
+      onMouseEnter={() => setPointerOver(true)}
+      onMouseLeave={() => setPointerOver(false)}
+      onFocusCapture={() => setFocusWithin(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setFocusWithin(false);
+        }
+      }}
     >
-      <div className="mx-auto mb-3 flex max-w-3xl items-center gap-2 rounded-xl border border-reader-border bg-reader-surface/95 px-3 py-2 shadow-lg backdrop-blur">
+      {/* flex-wrap: on narrow (mobile) viewports the controls flow onto a
+          second row instead of clipping off the right edge. */}
+      <div className="mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-center gap-2 rounded-xl border border-reader-border bg-reader-surface/95 px-3 py-2 shadow-lg backdrop-blur">
         <div className="flex items-center gap-1">{leftControls}</div>
         <div className="flex flex-1 items-center justify-center gap-1">
           {formatControls}

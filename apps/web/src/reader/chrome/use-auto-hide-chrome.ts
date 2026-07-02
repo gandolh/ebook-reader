@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { useReaderStore } from "../../store/reader-store";
 
@@ -8,39 +8,59 @@ import { useReaderStore } from "../../store/reader-store";
  * Behavior:
  * - Chrome hides after `idleMs` of no pointer/keyboard activity.
  * - Any mouse move, tap, key press, or scroll reveals it and restarts the timer.
+ * - While a chrome hold is active (`chromeHoldCount > 0` — pointer over the
+ *   toolbar, or a popover/drawer/search panel open) the timer never hides it;
+ *   it re-arms instead, so the chrome can't fade out from under the user.
  * - Visibility is stored in Zustand (`chromeVisible`) so any component can read
  *   it and the format-adaptive toolbar can animate itself.
  *
- * This is format-agnostic on purpose: it listens on `window`, not on the PDF
- * canvas, so the EPUB reader (brief 07) gets the same behavior for free.
+ * Listens on `window`, which covers the PDF reader fully. The EPUB renderer
+ * lives in an iframe whose events do NOT bubble to the parent window — the
+ * EPUB reader must forward the rendition's DOM events into the returned
+ * `reveal` callback (epub.js re-emits `mousemove`/`click`/`keydown` on the
+ * rendition).
+ *
+ * Returns a stable `reveal` function.
  */
 export function useAutoHideChrome(options: { idleMs?: number; enabled?: boolean } = {}) {
   const { idleMs = 3000, enabled = true } = options;
 
   const setChromeVisible = useReaderStore((s) => s.setChromeVisible);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const scheduleHide = useCallback(
+    function schedule() {
+      clearTimer();
+      timerRef.current = setTimeout(() => {
+        // A hold (toolbar hover, open popover/drawer) blocks hiding; try again
+        // after another idle period rather than hiding mid-interaction.
+        if (useReaderStore.getState().chromeHoldCount > 0) {
+          schedule();
+          return;
+        }
+        setChromeVisible(false);
+      }, idleMs);
+    },
+    [clearTimer, idleMs, setChromeVisible],
+  );
+
+  const reveal = useCallback(() => {
+    if (!enabledRef.current) return;
+    setChromeVisible(true);
+    scheduleHide();
+  }, [scheduleHide, setChromeVisible]);
 
   useEffect(() => {
     if (!enabled) return;
-
-    const clearTimer = () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-
-    const scheduleHide = () => {
-      clearTimer();
-      timerRef.current = setTimeout(() => {
-        setChromeVisible(false);
-      }, idleMs);
-    };
-
-    const reveal = () => {
-      setChromeVisible(true);
-      scheduleHide();
-    };
 
     // Reveal + arm the idle timer on any reading interaction.
     window.addEventListener("mousemove", reveal, { passive: true });
@@ -58,5 +78,22 @@ export function useAutoHideChrome(options: { idleMs?: number; enabled?: boolean 
       window.removeEventListener("keydown", reveal);
       window.removeEventListener("scroll", reveal, { capture: true } as EventListenerOptions);
     };
-  }, [enabled, idleMs, setChromeVisible]);
+  }, [enabled, reveal, clearTimer]);
+
+  return reveal;
+}
+
+/**
+ * Hold the chrome visible while `active` (e.g. while a popover/drawer is open).
+ * Balanced acquire/release; safe under StrictMode double-invocation.
+ */
+export function useChromeHold(active: boolean) {
+  const acquire = useReaderStore((s) => s.acquireChromeHold);
+  const release = useReaderStore((s) => s.releaseChromeHold);
+
+  useEffect(() => {
+    if (!active) return;
+    acquire();
+    return release;
+  }, [active, acquire, release]);
 }

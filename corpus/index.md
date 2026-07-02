@@ -20,3 +20,8 @@ The front door. What lives where.
 - [briefs/todo/](briefs/todo/) — ready-to-build specs
 - [briefs/done/](briefs/done/) — completed (immutable)
 - [todos/](todos/) — captured ideas (pre-spec)
+
+## Testing
+- [test-plans/index.md](test-plans/index.md) — browser test plans (TP-01…TP-05)
+- [test-plans/RESULTS.md](test-plans/RESULTS.md) — latest run outcome
+- `playwright/` (repo root, gitignored) — run hub: bring-up, fixtures, screenshots

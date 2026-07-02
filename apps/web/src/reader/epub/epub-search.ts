@@ -39,15 +39,29 @@ function buildHrefLabels(toc: NavItem[]): Map<string, string> {
   const walk = (items: NavItem[]) => {
     for (const item of items) {
       if (item.href) {
-        // Strip any in-page anchor so it matches the spine href.
+        // Strip any in-page anchor so it matches the spine href. Nav hrefs can
+        // be relative to the nav doc while spine hrefs are package-relative,
+        // so also index by bare filename for suffix matching in the lookup.
         const base = item.href.split("#")[0];
         if (base && !map.has(base)) map.set(base, item.label.trim());
+        const name = base?.split("/").pop();
+        if (name && !map.has(name)) map.set(name, item.label.trim());
       }
       if (item.subitems && item.subitems.length > 0) walk(item.subitems);
     }
   };
   walk(toc);
   return map;
+}
+
+/** Look up a chapter label for a spine href, tolerating path-relative TOCs. */
+function labelForHref(
+  hrefLabels: Map<string, string>,
+  href: string | undefined,
+): string | undefined {
+  if (!href) return undefined;
+  const base = href.split("#")[0];
+  return hrefLabels.get(base) ?? hrefLabels.get(base.split("/").pop() ?? "");
 }
 
 export function createEpubSearchProvider(book: Book): SearchProvider {
@@ -80,9 +94,7 @@ export function createEpubSearchProvider(book: Book): SearchProvider {
           await section.load(book.load.bind(book));
           const found = section.find(query);
           if (found.length > 0) {
-            const label = section.href
-              ? hrefLabels.get(section.href.split("#")[0])
-              : undefined;
+            const label = labelForHref(hrefLabels, section.href);
             for (const m of found) {
               results.push({ excerpt: m.excerpt, target: m.cfi, label });
               if (results.length >= MAX_RESULTS) break;

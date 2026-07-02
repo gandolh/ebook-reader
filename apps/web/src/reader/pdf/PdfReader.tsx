@@ -13,6 +13,7 @@ import "./pdf-worker";
 
 import { useReaderStore } from "../../store/reader-store";
 import {
+  HomeButton,
   PageNav,
   ProgressIndicator,
   ReaderToolbar,
@@ -64,6 +65,9 @@ export function PdfReader({ file }: { file: File }) {
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Query to highlight on the rendered page after a search jump (D19 follow-up:
+  // landing on the right page without marking the match strands the reader).
+  const [highlightQuery, setHighlightQuery] = useState<string | null>(null);
 
   // Fixed-layout PDFs can't be re-themed, so "dark" = invert the canvas.
   const inverted = theme === "dark";
@@ -149,11 +153,41 @@ export function PdfReader({ file }: { file: File }) {
     [pdfDoc],
   );
   const onJumpToMatch = useCallback(
-    (match: SearchMatch) => {
-      if (typeof match.target === "number") goToPage(match.target);
+    (match: SearchMatch, query: string) => {
+      if (typeof match.target === "number") {
+        goToPage(match.target);
+        setHighlightQuery(query);
+      }
     },
     [goToPage],
   );
+
+  // react-pdf renders this return value as HTML (dangerouslySetInnerHTML), so
+  // escape the text item before wrapping query matches in <mark>.
+  const customTextRenderer = useMemo(() => {
+    if (!highlightQuery) return undefined;
+    const needle = highlightQuery.toLowerCase();
+    const escapeHtml = (s: string) =>
+      s
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    return ({ str }: { str: string }) => {
+      const haystack = str.toLowerCase();
+      let idx = haystack.indexOf(needle);
+      if (idx === -1) return escapeHtml(str);
+      let html = "";
+      let from = 0;
+      while (idx !== -1) {
+        html += escapeHtml(str.slice(from, idx));
+        html += `<mark>${escapeHtml(str.slice(idx, idx + needle.length))}</mark>`;
+        from = idx + needle.length;
+        idx = haystack.indexOf(needle, from);
+      }
+      return html + escapeHtml(str.slice(from));
+    };
+  }, [highlightQuery]);
 
   // Fit-width base: page fills the container; `zoom` multiplies on top of it.
   const pageWidth = useMemo(() => {
@@ -188,6 +222,7 @@ export function PdfReader({ file }: { file: File }) {
               width={pageWidth}
               renderTextLayer
               renderAnnotationLayer
+              customTextRenderer={customTextRenderer}
               className="shadow-lg"
             />
           </Document>
@@ -218,6 +253,7 @@ export function PdfReader({ file }: { file: File }) {
       )}
 
       <ReaderToolbar
+        leftControls={<HomeButton />}
         // The `formatControls` slot IS the format-adaptive seam — PDF fills it
         // here; brief 07 fills it with EPUB font/theme controls (same shell).
         formatControls={
@@ -245,7 +281,7 @@ export function PdfReader({ file }: { file: File }) {
               }
             >
               <ThemePicker />
-              <p className="text-xs text-reader-fg/50">
+              <p className="text-xs text-reader-fg/60">
                 PDF is fixed-layout: "Dark" inverts the page colours; font
                 controls are EPUB-only.
               </p>

@@ -4,6 +4,7 @@ import type { Book, NavItem, Rendition } from "epubjs";
 
 import { useReaderStore } from "../../store/reader-store";
 import {
+  HomeButton,
   PageNav,
   ProgressIndicator,
   ReaderToolbar,
@@ -22,6 +23,7 @@ import { EpubSettings } from "./EpubSettings";
 import { useEpubToc } from "./use-epub-toc";
 import { useEpubTheme } from "./use-epub-theme";
 import { createEpubSearchProvider } from "./epub-search";
+import { resolveSpineHref } from "./resolve-spine-href";
 
 /**
  * EPUB reader (brief 07). Wraps `react-reader` (epub.js) inside the SAME shared
@@ -55,9 +57,28 @@ export function EpubReader({ file }: { file: File }) {
 
   // Shared chrome behaviors.
   useApplyTheme();
-  useAutoHideChrome();
+  const revealChrome = useAutoHideChrome();
   // Theme + font settings applied to the reflowable rendition (real theming).
   useEpubTheme(rendition);
+
+  // The book renders in an iframe whose input events do NOT bubble to the
+  // parent window, so the auto-hide chrome would never reveal while the
+  // pointer is over the page. epub.js re-emits the iframe's DOM events on the
+  // rendition — forward them to the shared reveal.
+  useEffect(() => {
+    if (!rendition) return;
+    const forward = () => revealChrome();
+    rendition.on("mousemove", forward);
+    rendition.on("click", forward);
+    rendition.on("keydown", forward);
+    rendition.on("touchstart", forward);
+    return () => {
+      rendition.off("mousemove", forward);
+      rendition.off("click", forward);
+      rendition.off("keydown", forward);
+      rendition.off("touchstart", forward);
+    };
+  }, [rendition, revealChrome]);
 
   // Read the File into an ArrayBuffer once per file.
   useEffect(() => {
@@ -100,9 +121,18 @@ export function EpubReader({ file }: { file: File }) {
     setRendition(r);
     bookRef.current = r.book;
     // Generate coarse locations in the background so the progress % is stable
-    // (1000-char granularity keeps this fast even for large books).
+    // (1000-char granularity keeps this fast even for large books). Until this
+    // resolves, percentages come back 0 — refresh once it's done so the
+    // indicator doesn't stay at 0% until the next page turn.
     r.book.ready
       .then(() => r.book.locations.generate(1000))
+      .then(() => {
+        const current = r.currentLocation() as unknown as {
+          start?: { percentage?: number };
+        };
+        const p = current?.start?.percentage;
+        if (typeof p === "number" && p >= 0) setPercent(Math.round(p * 100));
+      })
       .catch(() => {
         /* progress falls back to spine percentage */
       });
@@ -116,7 +146,10 @@ export function EpubReader({ file }: { file: File }) {
   const onNavigateToc = useCallback(
     (entry: TocEntry) => {
       if (typeof entry.target === "string" && rendition) {
-        void rendition.display(entry.target);
+        // Nav-doc hrefs can be relative to the nav document, which epub.js
+        // can't resolve against the spine (see resolve-spine-href.ts).
+        const resolved = resolveSpineHref(rendition.book, entry.target);
+        if (resolved) void rendition.display(resolved);
       }
       setTocOpen(false);
     },
@@ -132,16 +165,53 @@ export function EpubReader({ file }: { file: File }) {
 
   usePageNavKeys({ onPrev, onNext });
 
+  // Arrow keys pressed while focus sits inside the book iframe never reach the
+  // window listener above — handle the rendition-forwarded keydown too.
+  useEffect(() => {
+    if (!rendition) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" || event.key === "PageUp") onPrev();
+      else if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ")
+        onNext();
+    };
+    rendition.on("keydown", onKey);
+    return () => rendition.off("keydown", onKey);
+  }, [rendition, onPrev, onNext]);
+
   // Search provider bound to the loaded book; recreated when the book changes.
   const searchProvider = useMemo(() => {
     if (!rendition) return null;
     return createEpubSearchProvider(rendition.book);
   }, [rendition]);
 
+  // The CFI range of the last search jump, kept so the previous highlight is
+  // removed before adding the next one.
+  const searchHighlightRef = useRef<string | null>(null);
+
   const onJumpToMatch = useCallback(
     (match: SearchMatch) => {
       if (typeof match.target === "string" && rendition) {
-        void rendition.display(match.target);
+        const cfi = match.target;
+        if (searchHighlightRef.current) {
+          try {
+            rendition.annotations.remove(searchHighlightRef.current, "highlight");
+          } catch {
+            /* stale/never-rendered highlight — nothing to remove */
+          }
+          searchHighlightRef.current = null;
+        }
+        void rendition.display(cfi).then(() => {
+          try {
+            rendition.annotations.highlight(cfi, {}, undefined, "search-highlight", {
+              fill: "#facc15",
+              "fill-opacity": "0.4",
+              "mix-blend-mode": "multiply",
+            });
+            searchHighlightRef.current = cfi;
+          } catch {
+            /* highlight is best-effort; the jump already landed */
+          }
+        });
       }
     },
     [rendition],
@@ -178,7 +248,11 @@ export function EpubReader({ file }: { file: File }) {
       <div className="relative flex-1 overflow-hidden">
         <ReactReader
           url={data}
-          location={cfi}
+          // Before we have a CFI, start at spine index 0. Never let react-reader
+          // fall back to `toc[0].href` — nav-doc-relative hrefs don't resolve in
+          // the spine for books whose nav lives in a subdirectory ("No Section
+          // Found" → blank reader).
+          location={cfi ?? 0}
           locationChanged={onLocationChanged}
           getRendition={onGetRendition}
           tocChanged={onTocChanged}
@@ -209,6 +283,7 @@ export function EpubReader({ file }: { file: File }) {
       )}
 
       <ReaderToolbar
+        leftControls={<HomeButton />}
         // The `formatControls` slot IS the format-adaptive seam — EPUB fills it
         // with TOC + search + the font/theme settings trigger (PDF fills it with
         // zoom/invert). Same shell, different slot contents.
@@ -235,7 +310,7 @@ export function EpubReader({ file }: { file: File }) {
           <ProgressIndicator
             current={percent ?? 0}
             total={percent === null ? null : 100}
-            unitLabel=""
+            variant="percent"
           />
         }
       />

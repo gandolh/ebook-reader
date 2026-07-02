@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 
 import type { SearchMatch, SearchProvider } from "./search-seam";
+import { useChromeHold } from "./use-auto-hide-chrome";
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -29,10 +30,17 @@ export function SearchPanel({
   onOpenChange: (open: boolean) => void;
   /** Reader-supplied search implementation (PDF text layer / epub.js spine). */
   provider: SearchProvider;
-  /** Resolve a match's opaque target (jump to page/CFI) in the reader. */
-  onJump: (match: SearchMatch) => void;
+  /**
+   * Resolve a match's opaque target (jump to page/CFI) in the reader. Receives
+   * the query that produced the match so the reader can highlight it in the
+   * rendered page.
+   */
+  onJump: (match: SearchMatch, query: string) => void;
   title?: string;
 }) {
+  // Keep the chrome visible while the panel is open (same as the TOC drawer).
+  useChromeHold(open);
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchMatch[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -40,6 +48,9 @@ export function SearchPanel({
   // Guards against out-of-order async results (a slow earlier query resolving
   // after a newer one) and against setState after close/unmount.
   const runIdRef = useRef(0);
+  // The query that produced the current `results` — what a selected match
+  // should be highlighted as (the input may have changed since).
+  const executedQueryRef = useRef("");
 
   // Focus the input when the panel opens; reset state when it closes.
   useEffect(() => {
@@ -61,6 +72,7 @@ export function SearchPanel({
       return;
     }
     const runId = ++runIdRef.current;
+    executedQueryRef.current = trimmed;
     setSearching(true);
     try {
       const matches = await provider.search(trimmed);
@@ -84,7 +96,7 @@ export function SearchPanel({
 
   const onSelect = useCallback(
     (match: SearchMatch) => {
-      onJump(match);
+      onJump(match, executedQueryRef.current);
       onOpenChange(false);
     },
     [onJump, onOpenChange],
@@ -134,7 +146,7 @@ export function SearchPanel({
             )}
             {!searching && results !== null && results.length > 0 && (
               <>
-                <p className="px-2 pb-1 pt-1 text-xs text-reader-fg/50">
+                <p className="px-2 pb-1 pt-1 text-xs text-reader-fg/60">
                   {results.length} {results.length === 1 ? "result" : "results"}
                 </p>
                 <ul>

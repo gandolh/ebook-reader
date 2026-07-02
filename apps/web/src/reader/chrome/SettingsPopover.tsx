@@ -1,5 +1,7 @@
-import type { ReactElement, ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { Popover } from "@base-ui/react/popover";
+
+import { useChromeHold } from "./use-auto-hide-chrome";
 
 /**
  * Shared settings surface (wiki/reader.md "Settings surface via Base UI
@@ -25,8 +27,13 @@ export function SettingsPopover({
   title: string;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  // The popover is anchored to the toolbar — keep the chrome from auto-hiding
+  // underneath it while open.
+  useChromeHold(open);
+
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger render={trigger} aria-label={title} />
       <Popover.Portal>
         <Popover.Positioner side="top" sideOffset={8} className="z-50">

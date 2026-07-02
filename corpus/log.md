@@ -81,3 +81,23 @@ typecheck ×3 + Vite build (599 modules). **All 7 briefs done — build complete
 Remaining gaps are dev-machine only: Calibre absent (live conversion untested) +
 no headless browser (readers not pixel-verified). See
 [briefs/done/07-epub-reader-and-search.md](briefs/done/07-epub-reader-and-search.md).
+
+## [2026-07-02] verify+fix | Full browser test run (Playwright) + UI audit — both verification gaps closed
+
+First live run of the whole app against real files (arXiv PDF; a real 24MB
+commercial EPUB) with Playwright MCP + Calibre 5.37 on host. Test practice
+scaffolded: plans in `corpus/test-plans/` (TP-01…TP-05 + RESULTS.md), run hub in
+`playwright/` (gitignored per owner request, incl. screenshots). All five plans
+PASS after a verify→fix loop. Big catches: EPUB reader rendered **blank** on
+real-world books (EPUB3 nav hrefs relative to a subdirectory nav doc don't
+resolve in the epub.js spine → "No Section Found"; fixed with a spine-href
+resolver + `location={cfi ?? 0}`); no way back home from either reader (new
+shared `HomeButton`); auto-hide chrome hid under the open popover/cursor and
+never revealed over the EPUB iframe (chrome-hold + rendition event forwarding);
+search jumps now highlight the match (PDF `<mark>` via customTextRenderer, EPUB
+`annotations.highlight`); fresh-checkout `npm run dev` failed until shared is
+built (dev script now builds it); live conversion worked only with
+`PYTHONNOUSERSITE=1` (host pip lxml vs distro Calibre — API now sets it;
+verified 200 + valid 28MB PDF in ~6s). UI audit fixes: toolbar wraps at mobile,
+EPUB progress shows a single % chip, favicon, contrast bump. Typecheck ×3
+clean. Full detail: [test-plans/RESULTS.md](test-plans/RESULTS.md).

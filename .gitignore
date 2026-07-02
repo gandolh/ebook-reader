@@ -25,3 +25,15 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Playwright (whole test-hub dir stays local)
+playwright/
+.playwright-mcp/
+
+# MCP browser tools drop screenshots at repo root before they are moved
+/*.png
+/*.jpeg
+/*.jpg
+
+# Personal test books (not for the repo)
+testing_files/

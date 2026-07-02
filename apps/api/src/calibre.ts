@@ -9,6 +9,15 @@ import { spawn } from "node:child_process";
 
 const EBOOK_CONVERT = "ebook-convert";
 
+/**
+ * Calibre's official builds isolate themselves from user site-packages; distro
+ * builds run the system Python, where a pip-installed `~/.local` lxml can
+ * shadow the distro one and crash `ebook-convert` with a libxml2 version
+ * mismatch. Spawn with PYTHONNOUSERSITE=1 so conversions are immune to the
+ * user's Python environment.
+ */
+const CALIBRE_ENV = { ...process.env, PYTHONNOUSERSITE: "1" };
+
 export type ConvertOutcome =
   /** Conversion produced the output PDF. */
   | { kind: "ok" }
@@ -40,6 +49,7 @@ export function runEbookConvert(
 
     const child = spawn(EBOOK_CONVERT, [input, output], {
       stdio: ["ignore", "ignore", "pipe"],
+      env: CALIBRE_ENV,
     });
 
     let stderr = "";
@@ -84,7 +94,10 @@ export function isCalibreAvailable(): Promise<boolean> {
       resolve(available);
     };
 
-    const child = spawn(EBOOK_CONVERT, ["--version"], { stdio: "ignore" });
+    const child = spawn(EBOOK_CONVERT, ["--version"], {
+      stdio: "ignore",
+      env: CALIBRE_ENV,
+    });
     child.on("error", () => done(false));
     child.on("close", (code) => done(code === 0));
   });

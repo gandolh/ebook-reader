@@ -1,28 +1,32 @@
-# Status — 2026-07-02
+# Status — 2026-07-02 (post test run)
 
-**Phase:** ✅ **v1 build complete.** All 7 briefs done + committed. All deps pinned
-(D21); Node ≥22 (D23). Typecheck clean ×3; web + api build.
+**Phase:** ✅ **v1 verified in a real browser — ready for personal use.**
 
-## Where things stand
-The full v1 shipped: stateless monorepo, shared Zod contract, backend `/convert`
-(Calibre), frontend shell, smart uploader + convert flow, PDF reader + shared
-Kindle-style chrome, EPUB reader (real reflow theming), and shared in-book search
-for both formats. **Two verification gaps remain (dev-machine tooling, not code):**
-(1) backend live EPUB→PDF conversion never smoke-tested — Calibre not installed;
-(2) readers not pixel-verified — no headless browser installed. Both tracked in
-open-questions.md; both closeable by running in a real environment
-(`/read?format=pdf|epub&dev=1` for the readers).
+All 7 briefs done + a full Playwright test run against real files (arXiv PDF +
+a real 24MB commercial EPUB) with live Calibre. Both former verification gaps
+are closed; every test plan passes after a verify→fix loop. Zero console
+errors on a fresh load. Typecheck clean ×3.
+
+## What the run fixed (headlines)
+- **EPUB blank-render on real-world books** (nav-doc-relative hrefs vs epub.js
+  spine) — the reader now opens the Apothecary Diaries volume correctly.
+- **No way home from the readers** — shared `HomeButton` in both toolbars.
+- **Auto-hide chrome misbehaviors** (hid under open popover / resting cursor;
+  never revealed over the EPUB iframe) — chrome-hold + event forwarding.
+- **Search jumps highlight the match** in both formats now.
+- **Fresh `npm run dev` works** (builds `shared` first).
+- **Live conversion verified** (~6s for the 24MB EPUB → valid 28MB PDF);
+  API spawns Calibre with `PYTHONNOUSERSITE=1` to dodge host pip lxml.
+- UI audit: mobile toolbar wraps, EPUB progress is a single % chip, favicon,
+  contrast bump.
+
+## Testing practice (new)
+- Plans: `corpus/test-plans/` (TP-01…TP-05, RESULTS.md — latest run).
+- Run hub: `playwright/` (bring-up, fixtures, conventions; gitignored).
+- Fixtures: `testing_files/` (personal books; gitignored).
 
 ## Briefs
 | # | Brief | State |
 |---|---|---|
-| 01 | Monorepo scaffold (npm workspaces, shared, tooling) | **done** |
-| 02 | Shared Zod contract (`packages/shared`) | **done** |
-| 03 | Backend `/convert` route (Fastify + Calibre) | **done** ⚠️ live conv. untested |
-| 04 | Frontend shell (Vite, Router, Query, Tailwind, Base UI) | **done** |
-| 05 | Smart uploader + convert flow (Download / Go back) | **done** |
-| 06 | PDF reader (react-pdf) + shared chrome | **done** |
-| 07 | EPUB reader (react-reader) + toolbar + search | **done** |
-
-## Verified
-Nothing to verify yet — no code.
+| 01–07 | v1 build | **done** |
+| — | Full browser verification + UI audit | **done (2026-07-02)** |

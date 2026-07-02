@@ -39,6 +39,12 @@ export interface ReaderState {
   fontSettings: FontSettings;
   currentLocation: ReaderLocation;
   chromeVisible: boolean;
+  /**
+   * While > 0 the auto-hide timer must not hide the chrome — held while the
+   * pointer is over the toolbar or a chrome surface (popover/drawer/search)
+   * is open, so the toolbar can't fade out from under the user.
+   */
+  chromeHoldCount: number;
   layoutMode: LayoutMode;
   /** The in-memory file handed from the uploader (`/`) to the reader (`/read`). */
   loadedFile: File | null;
@@ -57,6 +63,8 @@ export interface ReaderState {
   setCurrentLocation: (location: ReaderLocation) => void;
   setChromeVisible: (visible: boolean) => void;
   toggleChrome: () => void;
+  acquireChromeHold: () => void;
+  releaseChromeHold: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
   /** Stash the picked/forked file + its detected format for `/read` to pick up. */
   setLoadedFile: (file: File | null, format: Format | null) => void;
@@ -77,6 +85,7 @@ const initialState = {
   fontSettings: DEFAULT_FONT_SETTINGS,
   currentLocation: null as ReaderLocation,
   chromeVisible: true,
+  chromeHoldCount: 0,
   layoutMode: "paginated" as LayoutMode,
   loadedFile: null as File | null,
   loadedFormat: null as Format | null,
@@ -94,6 +103,13 @@ export const useReaderStore = create<ReaderState>((set) => ({
   setCurrentLocation: (currentLocation) => set({ currentLocation }),
   setChromeVisible: (chromeVisible) => set({ chromeVisible }),
   toggleChrome: () => set((state) => ({ chromeVisible: !state.chromeVisible })),
+  acquireChromeHold: () =>
+    set((state) => ({
+      chromeHoldCount: state.chromeHoldCount + 1,
+      chromeVisible: true,
+    })),
+  releaseChromeHold: () =>
+    set((state) => ({ chromeHoldCount: Math.max(0, state.chromeHoldCount - 1) })),
   setLayoutMode: (layoutMode) => set({ layoutMode }),
   setLoadedFile: (loadedFile, loadedFormat) => set({ loadedFile, loadedFormat }),
   setZoom: (zoom) => set({ zoom }),

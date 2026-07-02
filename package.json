@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w @ebook-reader/web\" \"npm run dev -w @ebook-reader/api\"",
+    "dev": "npm run build -w @ebook-reader/shared && concurrently -n web,api -c cyan,magenta \"npm run dev -w @ebook-reader/web\" \"npm run dev -w @ebook-reader/api\"",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },

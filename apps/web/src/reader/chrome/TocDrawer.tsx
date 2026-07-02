@@ -1,5 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 
+import { useChromeHold } from "./use-auto-hide-chrome";
+
 /**
  * A single entry in the shared table-of-contents (wiki/reader.md "Table of
  * contents drawer"). Format-agnostic: PDF derives these from the PDF outline
@@ -39,6 +41,10 @@ export function TocDrawer({
   onNavigate: (entry: TocEntry) => void;
   title?: string;
 }) {
+  // Keep the chrome visible while the drawer is open so closing it doesn't
+  // land the user on a hidden toolbar.
+  useChromeHold(open);
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
