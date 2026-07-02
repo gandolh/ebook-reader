@@ -39,7 +39,29 @@ Current page/location, theme, font settings, chrome visibility, layout mode.
 Resets on refresh (D3/D9).
 
 ## Styling
-Tailwind + Base UI (`@base-ui/react`) primitives: **Dialog/Drawer** (TOC,
-settings sheet), **Popover** (settings), **Slider** (font size/zoom), **Tabs**
-(theme picker), **Scroll Area**. Base UI is unstyled → bend toward a clean
-Kindle look; state via `data-*` attrs maps to Tailwind variants.
+Tailwind + Base UI (`@base-ui/react`) primitives: **Dialog** (TOC side-panel +
+settings sheet — chose Dialog over the heavier swipe Drawer), **Popover**
+(settings), **Slider** (font size/zoom), **Tabs** (theme picker). Base UI is
+unstyled → bend toward a clean Kindle look; state via `data-*` attrs maps to
+Tailwind variants.
+
+## Implementation map (built in brief 06)
+Shared, format-agnostic chrome lives in `apps/web/src/reader/chrome/`:
+- **`ReaderToolbar`** — the toolbar shell with the **format-adaptive seam**: slots
+  `leftControls` / `formatControls` / `rightControls`. Each reader supplies its
+  own `formatControls` (PDF = zoom/fit/invert; EPUB = font/theme). This is the
+  reuse contract — brief 07 fills the slot, doesn't fork the toolbar.
+- `PageNav` (arrows + left/right-third click-zones), `use-page-nav-keys`
+  (Arrow/PageUp-Down/Space), `use-auto-hide-chrome` (idle-hide → Zustand
+  `chromeVisible`), `ProgressIndicator`, `TocDrawer` (Base UI Dialog panel; entries
+  carry an opaque `target` the reader resolves), `SettingsPopover`, `SliderControl`,
+  `ThemePicker` (Tabs → `theme`), `use-apply-theme` (`data-theme` → `--reader-*`).
+- **`search-seam.ts`** — typed STUB (`SearchProvider`/`SearchMatch`); brief 07
+  implements search for both formats against it (D19).
+
+PDF reader in `apps/web/src/reader/pdf/`: `PdfReader`, `PdfControls`,
+`use-pdf-outline`. Worker via `pdfjs-dist/build/pdf.worker.min.mjs?url` (bundled).
+**PDF TOC only when the doc has an outline.** Invert-dark = CSS `invert(1)
+hue-rotate(180deg)` on the canvas (fixed layout can't be re-themed).
+Store fields: `theme`, `fontSettings`, `currentLocation`, `chromeVisible`,
+`layoutMode`, `zoom`, `loadedFile`/`loadedFormat`.

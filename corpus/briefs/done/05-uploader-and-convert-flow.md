@@ -30,3 +30,15 @@ The entry screen and the EPUB→PDF convert UX. See [reader.md](../../wiki/reade
 - Convert shows loading → Download + Go back on success; friendly message on
   each error code.
 - Download saves a valid PDF; Go back returns to the uploader.
+
+---
+## Outcome [2026-07-02]
+Shipped. `home.tsx` = dropzone (native drag/drop + click-to-browse) → `detectFileType`
+→ PDF navigates `/read?format=pdf`; EPUB forks Read | Convert to PDF | Cancel.
+`convert-api.ts` POSTs multipart via `useMutation`, parses shared `convertErrorSchema`
+into friendly per-code messages (`CONVERT_ERROR_MESSAGES`). Success → Download (blob
+object-URL) + Go back. File handed to reader via additive Zustand `loadedFile`/
+`loadedFormat` + `setLoadedFile` (a `File` isn't serializable into a search param;
+router.tsx untouched). No deps added. Verified: typecheck ×3, Vite build, live API
+convert (CALIBRE_MISSING + INVALID_FILE friendly errors, CORS 204 preflight). UI
+drag/drop not visually exercised (no browser tool) — checked via contract + code trace.

@@ -1,0 +1,260 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Document, Page } from "react-pdf";
+import type { PDFDocumentProxy } from "pdfjs-dist";
+
+// react-pdf's required layer CSS (text layer = selection/search; annotation
+// layer = links). Without these the text layer is mispositioned. Paths per the
+// installed package (react-pdf@10.4.1 ships them under dist/Page/).
+import "react-pdf/dist/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+
+// Import for side effect: configures the PDF.js worker for Vite (see file).
+import "./pdf-worker";
+
+import { useReaderStore } from "../../store/reader-store";
+import {
+  PageNav,
+  ProgressIndicator,
+  ReaderToolbar,
+  SettingsPopover,
+  ThemePicker,
+  ToolbarButton,
+  TocDrawer,
+  type TocEntry,
+  useApplyTheme,
+  useAutoHideChrome,
+  usePageNavKeys,
+} from "../chrome";
+import { PdfControls } from "./PdfControls";
+import { usePdfOutline } from "./use-pdf-outline";
+
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 0.2;
+
+// Passed to <Document options>. MUST be a stable reference (react-pdf compares
+// by identity and reloads the doc otherwise) — hence module-scope. Leaving it
+// empty is fine; react-pdf resolves cmaps/fonts from the bundled pdfjs-dist.
+const DOCUMENT_OPTIONS = {} as const;
+
+/**
+ * PDF reader (brief 06). Wraps react-pdf (PDF.js) with the shared Kindle-style
+ * chrome. Loads the in-memory `File` from Zustand (`loadedFile`, handed over by
+ * the uploader — brief 05). Fixed-layout: pages are navigated, zoomed, and (for
+ * "dark") colour-inverted rather than reflowed.
+ *
+ * Wiring to Zustand: `currentLocation` (page number), `zoom`, `theme`,
+ * `chromeVisible`.
+ */
+export function PdfReader({ file }: { file: File }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const currentLocation = useReaderStore((s) => s.currentLocation);
+  const setCurrentLocation = useReaderStore((s) => s.setCurrentLocation);
+  const zoom = useReaderStore((s) => s.zoom);
+  const setZoom = useReaderStore((s) => s.setZoom);
+  const theme = useReaderStore((s) => s.theme);
+  const setTheme = useReaderStore((s) => s.setTheme);
+
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  const [tocOpen, setTocOpen] = useState(false);
+
+  // Fixed-layout PDFs can't be re-themed, so "dark" = invert the canvas.
+  const inverted = theme === "dark";
+
+  const currentPage = typeof currentLocation === "number" ? currentLocation : 1;
+
+  // Shared chrome behaviors.
+  useApplyTheme();
+  useAutoHideChrome();
+
+  // Start on page 1 when a new document mounts.
+  useEffect(() => {
+    setCurrentLocation(1);
+  }, [file, setCurrentLocation]);
+
+  // Track available width so fit-width can size the page to the viewport.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const onLoadSuccess = useCallback(
+    (doc: PDFDocumentProxy) => {
+      setNumPages(doc.numPages);
+      setPdfDoc(doc);
+    },
+    [],
+  );
+
+  const tocEntries = usePdfOutline(pdfDoc);
+  const hasToc = tocEntries.length > 0;
+
+  const goToPage = useCallback(
+    (page: number) => {
+      if (numPages === null) return;
+      const clamped = Math.min(Math.max(page, 1), numPages);
+      setCurrentLocation(clamped);
+    },
+    [numPages, setCurrentLocation],
+  );
+
+  const onPrev = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
+  const onNext = useCallback(() => goToPage(currentPage + 1), [currentPage, goToPage]);
+
+  usePageNavKeys({ onPrev, onNext });
+
+  const onZoomIn = useCallback(
+    () => setZoom(Math.min(MAX_ZOOM, Math.round((zoom + ZOOM_STEP) * 100) / 100)),
+    [zoom, setZoom],
+  );
+  const onZoomOut = useCallback(
+    () => setZoom(Math.max(MIN_ZOOM, Math.round((zoom - ZOOM_STEP) * 100) / 100)),
+    [zoom, setZoom],
+  );
+  // Fit-width resets zoom to 1 and lets the page track the container width.
+  const onFitWidth = useCallback(() => setZoom(1), [setZoom]);
+
+  // "Invert colours" dark hack: toggle the theme between dark (inverted canvas)
+  // and light. PDF has no sepia/full theming — this is the fixed-layout dark
+  // mode (wiki/reader.md: PDF = "invert-only").
+  const onToggleInvert = useCallback(
+    () => setTheme(inverted ? "light" : "dark"),
+    [inverted, setTheme],
+  );
+
+  const onNavigateToc = useCallback(
+    (entry: TocEntry) => {
+      if (typeof entry.target === "number") goToPage(entry.target);
+      setTocOpen(false);
+    },
+    [goToPage],
+  );
+
+  // Fit-width base: page fills the container; `zoom` multiplies on top of it.
+  const pageWidth = useMemo(() => {
+    if (containerWidth === null) return undefined;
+    // Leave a little horizontal breathing room.
+    const base = Math.min(containerWidth - 32, 1000);
+    return Math.max(base, 200) * zoom;
+  }, [containerWidth, zoom]);
+
+  return (
+    <div className="fixed inset-0 top-0 flex flex-col bg-reader-bg">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto"
+        // Invert-colours "dark" hack for the fixed-layout PDF. hue-rotate keeps
+        // colour images roughly sane while the page goes dark-on-light → light-
+        // on-dark. Applied to the canvas wrapper only, so the chrome stays themed
+        // normally.
+        style={inverted ? { filter: "invert(1) hue-rotate(180deg)" } : undefined}
+      >
+        <div className="flex min-h-full justify-center py-6">
+          <Document
+            file={file}
+            onLoadSuccess={onLoadSuccess}
+            options={DOCUMENT_OPTIONS}
+            loading={<LoadingState />}
+            error={<ErrorState />}
+            className="max-w-full"
+          >
+            <Page
+              pageNumber={currentPage}
+              width={pageWidth}
+              renderTextLayer
+              renderAnnotationLayer
+              className="shadow-lg"
+            />
+          </Document>
+        </div>
+      </div>
+
+      <PageNav
+        onPrev={onPrev}
+        onNext={onNext}
+        canPrev={currentPage > 1}
+        canNext={numPages !== null && currentPage < numPages}
+      />
+
+      <TocDrawer
+        open={tocOpen}
+        onOpenChange={setTocOpen}
+        entries={tocEntries}
+        onNavigate={onNavigateToc}
+      />
+
+      <ReaderToolbar
+        // The `formatControls` slot IS the format-adaptive seam — PDF fills it
+        // here; brief 07 fills it with EPUB font/theme controls (same shell).
+        formatControls={
+          <PdfControls
+            zoom={zoom}
+            onZoomIn={onZoomIn}
+            onZoomOut={onZoomOut}
+            onFitWidth={onFitWidth}
+            inverted={inverted}
+            onToggleInvert={onToggleInvert}
+            hasToc={hasToc}
+            onOpenToc={() => setTocOpen(true)}
+          />
+        }
+        rightControls={
+          <>
+            <ProgressIndicator current={currentPage} total={numPages} />
+            <SettingsPopover
+              title="Reader settings"
+              trigger={
+                <ToolbarButton label="Reader settings">
+                  <SettingsIcon />
+                </ToolbarButton>
+              }
+            >
+              <ThemePicker />
+              <p className="text-xs text-reader-fg/50">
+                PDF is fixed-layout: "Dark" inverts the page colours; font
+                controls are EPUB-only.
+              </p>
+            </SettingsPopover>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="grid place-items-center py-20 text-sm text-reader-fg/60">
+      Loading PDF…
+    </div>
+  );
+}
+
+function ErrorState() {
+  return (
+    <div className="grid place-items-center py-20 text-sm text-red-500">
+      Failed to load PDF.
+    </div>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.2.61.75 1.05 1.42 1.09H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}

@@ -1,10 +1,17 @@
 import { create } from "zustand";
+import type { Format } from "@ebook-reader/shared";
 
 /**
  * In-memory reader state (decisions.md D9): resets on refresh — intended, no
  * persistence. Shared by both renderers (PDF/EPUB) behind the common Kindle-
  * style chrome (wiki/reader.md). This brief only lays out typed state +
  * setters; the readers (briefs 06/07) wire the actual behavior.
+ *
+ * `loadedFile`/`loadedFormat` are set by the uploader (brief 05, `/`) once a
+ * PDF is picked or an EPUB fork resolves to "Read", and are the handoff seam
+ * the `/read` renderers (briefs 06/07) consume — kept in Zustand rather than
+ * router state so the `File` object (not serializable into a URL/search
+ * param) survives the navigation to `/read`.
  */
 
 export type Theme = "light" | "sepia" | "dark";
@@ -33,6 +40,17 @@ export interface ReaderState {
   currentLocation: ReaderLocation;
   chromeVisible: boolean;
   layoutMode: LayoutMode;
+  /** The in-memory file handed from the uploader (`/`) to the reader (`/read`). */
+  loadedFile: File | null;
+  loadedFormat: Format | null;
+
+  /**
+   * PDF-only zoom scale (1 = 100%). Fixed-layout PDFs zoom instead of reflow;
+   * the EPUB reader (brief 07) ignores this and uses `fontSettings` instead.
+   * Kept here so the shared chrome can wire a zoom control format-agnostically.
+   * Additive field (brief 06) — do not rename/remove.
+   */
+  zoom: number;
 
   setTheme: (theme: Theme) => void;
   setFontSettings: (fontSettings: Partial<FontSettings>) => void;
@@ -40,6 +58,10 @@ export interface ReaderState {
   setChromeVisible: (visible: boolean) => void;
   toggleChrome: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
+  /** Stash the picked/forked file + its detected format for `/read` to pick up. */
+  setLoadedFile: (file: File | null, format: Format | null) => void;
+  /** Set the PDF zoom scale (brief 06). Clamped by the caller. */
+  setZoom: (zoom: number) => void;
   reset: () => void;
 }
 
@@ -56,6 +78,9 @@ const initialState = {
   currentLocation: null as ReaderLocation,
   chromeVisible: true,
   layoutMode: "paginated" as LayoutMode,
+  loadedFile: null as File | null,
+  loadedFormat: null as Format | null,
+  zoom: 1,
 };
 
 export const useReaderStore = create<ReaderState>((set) => ({
@@ -70,5 +95,7 @@ export const useReaderStore = create<ReaderState>((set) => ({
   setChromeVisible: (chromeVisible) => set({ chromeVisible }),
   toggleChrome: () => set((state) => ({ chromeVisible: !state.chromeVisible })),
   setLayoutMode: (layoutMode) => set({ layoutMode }),
+  setLoadedFile: (loadedFile, loadedFormat) => set({ loadedFile, loadedFormat }),
+  setZoom: (zoom) => set({ zoom }),
   reset: () => set(initialState),
 }));

@@ -26,6 +26,10 @@ const homeRoute = createRoute({
 // so `/read` can be deep-linked once brief 05 wires the uploader to it.
 const readSearchSchema = z.object({
   format: formatSchema.optional(),
+  // Dev-only, opt-in flag: when `?dev=1` and running the dev server, `/read`
+  // loads a bundled sample PDF so the reader is testable without the uploader
+  // (brief 06). Gated by `import.meta.env.DEV` — no effect in production.
+  dev: z.coerce.boolean().optional(),
 });
 
 const readRoute = createRoute({

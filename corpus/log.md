@@ -50,3 +50,21 @@ Zustand reader store, Tailwind v4 (theme tokens), Base UI Dialog proven, api
 client reading `VITE_API_URL`. Base UI package confirmed `@base-ui/react@1.6.0`
 (D22). All web deps pinned exact; Node pinned ≥22 / `.nvmrc` 22.23.1 (D23).
 Wave 3 complete. See [briefs/done/04-frontend-shell.md](briefs/done/04-frontend-shell.md).
+
+## [2026-07-02] done | Brief 05 — smart uploader + convert flow
+
+`/` dropzone classifies via shared `detectFileType`; PDF → `/read?format=pdf`,
+EPUB → Read | Convert fork. Convert `useMutation` → Download + Go back; shared
+`convertErrorSchema` mapped to friendly messages. File handed to reader via
+additive Zustand `loadedFile`/`loadedFormat`. No deps added. Verified typecheck +
+build + live API contract. See [briefs/done/05-uploader-and-convert-flow.md](briefs/done/05-uploader-and-convert-flow.md).
+
+## [2026-07-02] done | Brief 06 — PDF reader + shared chrome (crux)
+
+Format-agnostic shared chrome in `reader/chrome/` with a slot-based
+format-adaptive toolbar seam (`formatControls`) for brief 07 to reuse. react-pdf
++ bundled PDF.js worker (Vite `?url`), TextLayer on. PDF TOC only when outline
+exists (resolves open Q). Invert-dark for fixed layout. Deps pinned `react-pdf
+10.4.1` + `pdfjs-dist 5.4.296`. Store additive `zoom`. Verified typecheck + build
++ pdfjs Node validation; not pixel-verified (no headless browser). Wave 4 complete.
+See [briefs/done/06-pdf-reader.md](briefs/done/06-pdf-reader.md).
