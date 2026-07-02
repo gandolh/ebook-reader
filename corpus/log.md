@@ -68,3 +68,16 @@ exists (resolves open Q). Invert-dark for fixed layout. Deps pinned `react-pdf
 10.4.1` + `pdfjs-dist 5.4.296`. Store additive `zoom`. Verified typecheck + build
 + pdfjs Node validation; not pixel-verified (no headless browser). Wave 4 complete.
 See [briefs/done/06-pdf-reader.md](briefs/done/06-pdf-reader.md).
+
+## [2026-07-02] done | Brief 07 — EPUB reader + shared search (final brief)
+
+react-reader EPUB reader in `reader/epub/`, reusing the shared chrome via the
+`formatControls` seam (no forks). Full light/sepia/dark applied to the epub.js
+rendition (real reflow theming). TOC from `book.navigation.toc`. Shared
+`SearchPanel` with providers for both formats: EPUB spine walk + PDF
+search-on-demand (resolves the last open Q). Deps pinned `react-reader 2.0.15`,
+`epubjs 0.3.93`, `react-swipeable 7.0.2`; no epubjs/Vite polyfill needed. Verified
+typecheck ×3 + Vite build (599 modules). **All 7 briefs done — build complete.**
+Remaining gaps are dev-machine only: Calibre absent (live conversion untested) +
+no headless browser (readers not pixel-verified). See
+[briefs/done/07-epub-reader-and-search.md](briefs/done/07-epub-reader-and-search.md).

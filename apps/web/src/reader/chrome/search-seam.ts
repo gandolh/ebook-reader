@@ -19,6 +19,12 @@ export interface SearchMatch {
   excerpt: string;
   /** e.g. page number (PDF) or CFI (EPUB) — resolved by the reader. */
   target: unknown;
+  /**
+   * Optional short human label giving the match context in the results list
+   * (brief 07, additive): PDF sets `"Page N"`; EPUB sets the chapter/spine
+   * label. Purely cosmetic — the reader still jumps via `target`.
+   */
+  label?: string;
 }
 
 /**

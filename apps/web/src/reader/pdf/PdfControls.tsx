@@ -20,6 +20,7 @@ export function PdfControls({
   onToggleInvert,
   hasToc,
   onOpenToc,
+  onOpenSearch,
 }: {
   zoom: number;
   onZoomIn: () => void;
@@ -30,6 +31,8 @@ export function PdfControls({
   /** Only render the TOC button when the PDF has an outline (open-question resolution). */
   hasToc: boolean;
   onOpenToc: () => void;
+  /** Open the shared in-book search panel (brief 07, additive). */
+  onOpenSearch: () => void;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -38,6 +41,9 @@ export function PdfControls({
           <TocIcon />
         </ToolbarButton>
       )}
+      <ToolbarButton label="Search in book" onClick={onOpenSearch}>
+        <SearchIcon />
+      </ToolbarButton>
 
       <ToolbarButton label="Zoom out" onClick={onZoomOut} disabled={zoom <= 0.5}>
         <MinusIcon />
@@ -90,3 +96,10 @@ const InvertIcon = () =>
   );
 const TocIcon = () =>
   icon(<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" {...stroke} />);
+const SearchIcon = () =>
+  icon(
+    <>
+      <circle cx="11" cy="11" r="7" {...stroke} />
+      <path d="M21 21l-4.3-4.3" {...stroke} />
+    </>,
+  );

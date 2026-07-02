@@ -16,10 +16,12 @@ import {
   PageNav,
   ProgressIndicator,
   ReaderToolbar,
+  SearchPanel,
   SettingsPopover,
   ThemePicker,
   ToolbarButton,
   TocDrawer,
+  type SearchMatch,
   type TocEntry,
   useApplyTheme,
   useAutoHideChrome,
@@ -27,6 +29,7 @@ import {
 } from "../chrome";
 import { PdfControls } from "./PdfControls";
 import { usePdfOutline } from "./use-pdf-outline";
+import { createPdfSearchProvider } from "./pdf-search";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
@@ -60,6 +63,7 @@ export function PdfReader({ file }: { file: File }) {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Fixed-layout PDFs can't be re-themed, so "dark" = invert the canvas.
   const inverted = theme === "dark";
@@ -138,6 +142,19 @@ export function PdfReader({ file }: { file: File }) {
     [goToPage],
   );
 
+  // In-book search (brief 07, additive): search-on-demand over the PDF.js text
+  // layer. Provider is bound to the loaded document; jumping sets the page.
+  const searchProvider = useMemo(
+    () => (pdfDoc ? createPdfSearchProvider(pdfDoc) : null),
+    [pdfDoc],
+  );
+  const onJumpToMatch = useCallback(
+    (match: SearchMatch) => {
+      if (typeof match.target === "number") goToPage(match.target);
+    },
+    [goToPage],
+  );
+
   // Fit-width base: page fills the container; `zoom` multiplies on top of it.
   const pageWidth = useMemo(() => {
     if (containerWidth === null) return undefined;
@@ -191,6 +208,15 @@ export function PdfReader({ file }: { file: File }) {
         onNavigate={onNavigateToc}
       />
 
+      {searchProvider && (
+        <SearchPanel
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          provider={searchProvider}
+          onJump={onJumpToMatch}
+        />
+      )}
+
       <ReaderToolbar
         // The `formatControls` slot IS the format-adaptive seam — PDF fills it
         // here; brief 07 fills it with EPUB font/theme controls (same shell).
@@ -204,6 +230,7 @@ export function PdfReader({ file }: { file: File }) {
             onToggleInvert={onToggleInvert}
             hasToc={hasToc}
             onOpenToc={() => setTocOpen(true)}
+            onOpenSearch={() => setSearchOpen(true)}
           />
         }
         rightControls={

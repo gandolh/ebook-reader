@@ -9,6 +9,7 @@ export { PageNav } from "./PageNav";
 export { ProgressIndicator } from "./ProgressIndicator";
 export { TocDrawer, type TocEntry } from "./TocDrawer";
 export { SettingsPopover } from "./SettingsPopover";
+export { SearchPanel } from "./SearchPanel";
 export { SliderControl } from "./SliderControl";
 export { ThemePicker } from "./ThemePicker";
 export { useAutoHideChrome } from "./use-auto-hide-chrome";

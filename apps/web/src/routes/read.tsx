@@ -2,7 +2,9 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 
 import { useReaderStore } from "../store/reader-store";
 import { PdfReader } from "../reader/pdf";
+import { EpubReader } from "../reader/epub";
 import { useDevSampleFile } from "../reader/pdf/dev/use-dev-sample-file";
+import { useDevSampleEpub } from "../reader/epub/dev/use-dev-sample-epub";
 
 const routeApi = getRouteApi("/read");
 
@@ -22,14 +24,19 @@ export function Read() {
   const loadedFile = useReaderStore((s) => s.loadedFile);
   const loadedFormat = useReaderStore((s) => s.loadedFormat);
 
-  // Dev-only, opt-in (`?dev=1`) sample PDF so `/read` is testable without the
-  // uploader. Returns null in production and when not enabled.
-  const devFile = useDevSampleFile(Boolean(dev));
+  // Dev-only, opt-in (`?dev=1`) sample files so `/read` is testable without the
+  // uploader. Both return null in production and when not enabled. The `format`
+  // param picks which sample: `?format=epub&dev=1` loads the EPUB, otherwise PDF.
+  const devWantsEpub = (loadedFormat ?? format) === "epub";
+  const devPdf = useDevSampleFile(Boolean(dev) && !devWantsEpub);
+  const devEpub = useDevSampleEpub(Boolean(dev) && devWantsEpub);
+  const devFile = devWantsEpub ? devEpub : devPdf;
 
   const file = loadedFile ?? devFile;
-  // Prefer the store's detected format; fall back to the URL param. When the
-  // dev sample is in play, treat it as PDF.
-  const effectiveFormat = loadedFormat ?? format ?? (devFile ? "pdf" : null);
+  // Prefer the store's detected format; fall back to the URL param. When a dev
+  // sample is in play, infer the format from which sample loaded.
+  const effectiveFormat =
+    loadedFormat ?? format ?? (devFile ? (devWantsEpub ? "epub" : "pdf") : null);
 
   if (!file) {
     return <NoFileState format={effectiveFormat} />;
@@ -40,9 +47,8 @@ export function Read() {
   }
 
   if (effectiveFormat === "epub") {
-    // Brief 07 replaces this with the EPUB reader (react-reader) using the same
-    // shared chrome. Until then, show a clear placeholder rather than crash.
-    return <EpubPending />;
+    // Brief 07: the EPUB reader (react-reader) reuses this brief's shared chrome.
+    return <EpubReader file={file} />;
   }
 
   return <NoFileState format={effectiveFormat} />;
@@ -61,23 +67,6 @@ function NoFileState({ format }: { format: string | null }) {
         className="w-fit rounded-md border border-reader-border bg-reader-surface px-4 py-2 text-sm font-medium"
       >
         Go to home to pick a file
-      </Link>
-    </main>
-  );
-}
-
-function EpubPending() {
-  return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-12">
-      <h1 className="text-2xl font-semibold">EPUB reader</h1>
-      <p className="text-reader-fg/70">
-        The EPUB renderer lands in brief 07 and reuses this brief's shared chrome.
-      </p>
-      <Link
-        to="/"
-        className="w-fit rounded-md border border-reader-border bg-reader-surface px-4 py-2 text-sm font-medium"
-      >
-        Go home
       </Link>
     </main>
   );

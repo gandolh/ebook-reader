@@ -1,15 +1,17 @@
 # Status — 2026-07-02
 
-**Phase:** implementation, waves 1–4 done. Uploader + PDF reader + shared chrome
-landed. All deps pinned (D21); Node ≥22 (D23). Next: wave 5 (final).
+**Phase:** ✅ **v1 build complete.** All 7 briefs done + committed. All deps pinned
+(D21); Node ≥22 (D23). Typecheck clean ×3; web + api build.
 
 ## Where things stand
-Spec locked in the wiki. Build running autonomously wave-by-wave. Briefs 01–06
-done + verified (typecheck clean ×3, Vite build ok). Shared reader chrome built
-with a format-adaptive toolbar seam for the EPUB reader to reuse. **Caveats:**
-(1) backend live EPUB→PDF conversion unverified — Calibre not installed on dev box;
-(2) readers not pixel-verified in a real browser — no headless browser installed
-(see open-questions.md). Next: wave 5 = brief 07 (EPUB reader + search) — the last.
+The full v1 shipped: stateless monorepo, shared Zod contract, backend `/convert`
+(Calibre), frontend shell, smart uploader + convert flow, PDF reader + shared
+Kindle-style chrome, EPUB reader (real reflow theming), and shared in-book search
+for both formats. **Two verification gaps remain (dev-machine tooling, not code):**
+(1) backend live EPUB→PDF conversion never smoke-tested — Calibre not installed;
+(2) readers not pixel-verified — no headless browser installed. Both tracked in
+open-questions.md; both closeable by running in a real environment
+(`/read?format=pdf|epub&dev=1` for the readers).
 
 ## Briefs
 | # | Brief | State |
@@ -20,7 +22,7 @@ with a format-adaptive toolbar seam for the EPUB reader to reuse. **Caveats:**
 | 04 | Frontend shell (Vite, Router, Query, Tailwind, Base UI) | **done** |
 | 05 | Smart uploader + convert flow (Download / Go back) | **done** |
 | 06 | PDF reader (react-pdf) + shared chrome | **done** |
-| 07 | EPUB reader (react-reader) + toolbar + search | todo |
+| 07 | EPUB reader (react-reader) + toolbar + search | **done** |
 
 ## Verified
 Nothing to verify yet — no code.

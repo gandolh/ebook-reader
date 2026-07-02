@@ -65,3 +65,24 @@ PDF reader in `apps/web/src/reader/pdf/`: `PdfReader`, `PdfControls`,
 hue-rotate(180deg)` on the canvas (fixed layout can't be re-themed).
 Store fields: `theme`, `fontSettings`, `currentLocation`, `chromeVisible`,
 `layoutMode`, `zoom`, `loadedFile`/`loadedFormat`.
+
+EPUB reader in `apps/web/src/reader/epub/` (built in brief 07, reuses the shared
+chrome verbatim): `EpubReader` (react-reader; loads `file.arrayBuffer()`,
+`locationChanged` → Zustand CFI, paginated; hides react-reader's built-in
+arrows/TOC so shared `PageNav`/`TocDrawer` drive), `EpubControls` (fills the
+`formatControls` seam), `EpubSettings` (font size/family/line-spacing/margins +
+ThemePicker), `use-epub-theme` (applies **full** light/sepia/dark + fonts to the
+epub.js *rendition* — real reflow theming, not PDF's invert hack), `use-epub-toc`
+(flatten `book.navigation.toc`), `epub-search.ts` (spine walk → `section.find`).
+
+## Search (built in brief 07, both formats)
+Shared **`SearchPanel`** (`reader/chrome/`, right-anchored Base UI Dialog: query +
+results + click-to-jump) is format-agnostic — it consumes a `SearchProvider`
+(`search-seam.ts`) and reports the chosen `target` via `onJump`. Both readers mount
+it with their own provider:
+- **EPUB** (`epub-search.ts`): walk the spine, `section.load()` → `section.find()`
+  → matches carry a CFI `target` + chapter label; jump = `rendition.display(cfi)`.
+- **PDF** (`pdf-search.ts`): **search-on-demand** over the PDF.js text layer
+  (`getTextContent()` per page, cached) — keeps open instant, pays cost only on
+  search; matches carry page + snippet; jump = go to page. (Chosen over
+  index-on-load.)
