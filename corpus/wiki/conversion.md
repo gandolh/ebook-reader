@@ -21,10 +21,13 @@ The only backend feature. A single stateless Fastify route.
 - **Startup check:** verify `ebook-convert` is on PATH; warn loudly if not.
 - **Concurrency:** no queue — single-user, requests just run.
 
-## Frontend flow
-Upload EPUB → `useMutation(POST /convert)` → on success, present **Download**
-(save the PDF) + **Go back** (return to uploader). No in-app reading of the
-converted PDF; to read it, re-upload (D1 detail in [decisions.md](decisions.md)).
+## Frontend flow (2026-07-02: moved into the reader)
+The uploader no longer forks — EPUBs open straight in the reader. Conversion is
+a **secondary "Download as PDF" toolbar button** in the EPUB reader:
+`useMutation(POST /convert)` → spinner on the button while converting → browser
+download of the PDF on success → transient error notice on failure. Still no
+in-app reading of the converted PDF; to read it, re-upload (D1 detail in
+[decisions.md](decisions.md)).
 
 ## Wiring
 Web → `VITE_API_URL` (`http://localhost:3001`) with CORS (`@fastify/cors`). No

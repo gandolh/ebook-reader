@@ -101,3 +101,27 @@ built (dev script now builds it); live conversion worked only with
 verified 200 + valid 28MB PDF in ~6s). UI audit fixes: toolbar wraps at mobile,
 EPUB progress shows a single % chip, favicon, contrast bump. Typecheck ×3
 clean. Full detail: [test-plans/RESULTS.md](test-plans/RESULTS.md).
+
+## [2026-07-02] build | "Quiet paper" EPUB reader redesign + one-step upload flow
+
+Designed via impeccable shape (brief confirmed by owner: quiet-paper feel,
+single centered column, all four priority areas). Reader changes: measure-capped
+centered column (`spread: none`, max-w-2xl, `relative` anchor is load-bearing);
+running header (book title / current chapter) + scrubbable bottom progress rail
+with chapter ticks + hover tooltip (locations-space, exact alignment with fill);
+footer chapter·% button opens the TOC scrolled to the current chapter
+(highlight + dot); "Aa" settings panel (theme swatches as miniature pages, font
+specimens, A−/A+ steppers); search panel groups results by chapter and bolds
+the query; skeleton-page loading; jump crossfade as an overlay veil; hyphenation
++ centered/fitted cover images; unified 1.75 icon strokes; quieter edge arrows
+(pointer-fine only). Toolbar wrapper is pointer-events-none so the rail under
+it stays scrubbable. **Flow collapsed (owner request): upload → read directly
+for both formats — the EPUB fork screen is gone; "Download as PDF" is now a
+secondary toolbar button in the EPUB reader (spinner while converting, transient
+error notice). PRODUCT.md added (impeccable init).** Verified live with the
+real book: column/rail/TOC/search/Aa/download all exercised; themes proven
+correct via print-pipeline render (viewport screenshots in this WSL headless
+env can serve stale composited frames for pages hosting huge epub iframes — a
+capture artifact, not a product bug; settings changes also re-render the
+current section as belt-and-suspenders). PDF reader regression-checked.
+Typecheck + build clean.

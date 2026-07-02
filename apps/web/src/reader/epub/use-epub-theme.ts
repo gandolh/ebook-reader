@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Rendition } from "epubjs";
 
 import { useReaderStore, type Theme } from "../../store/reader-store";
@@ -31,6 +31,11 @@ function themeRules(theme: Theme, lineSpacing: number, margins: number) {
       "line-height": `${lineSpacing} !important`,
       "padding-left": `${margins}px !important`,
       "padding-right": `${margins}px !important`,
+      // Quiet-paper typesetting: let the browser hyphenate long lines instead
+      // of leaving gappy rag/justification holes. Publisher CSS still wins on
+      // alignment; we only enable the capability.
+      "-webkit-hyphens": "auto",
+      hyphens: "auto",
     },
     // Force text colour through common elements EPUBs style directly, so their
     // own stylesheets don't override the theme (esp. for dark).
@@ -38,12 +43,30 @@ function themeRules(theme: Theme, lineSpacing: number, margins: number) {
       color: `${c.fg} !important`,
     },
     a: { color: `${c.link} !important` },
+    // Covers and full-page illustrations: fit the viewport column and sit
+    // centered instead of rendering at natural size in the top-left.
+    img: {
+      "max-width": "100% !important",
+      "max-height": "94vh !important",
+      height: "auto",
+      "object-fit": "contain",
+      display: "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+    },
+    svg: {
+      "max-width": "100% !important",
+      "max-height": "94vh !important",
+    },
   };
 }
 
 export function useEpubTheme(rendition: Rendition | null) {
   const theme = useReaderStore((s) => s.theme);
   const fontSettings = useReaderStore((s) => s.fontSettings);
+  // Tracks which rendition has had its initial settings applied, so the
+  // re-render nudge below only runs for *changes*, not the first application.
+  const appliedRef = useRef<Rendition | null>(null);
 
   useEffect(() => {
     if (!rendition) return;
@@ -61,6 +84,32 @@ export function useEpubTheme(rendition: Rendition | null) {
     // font metrics so reflow re-paginates correctly).
     rendition.themes.fontSize(`${fontSettings.size}px`);
     rendition.themes.font(fontStackFor(fontSettings.family));
+
+    // Chromium keeps a stale raster of LARGE section iframes after styles are
+    // injected from the parent — the DOM updates but the screen doesn't
+    // (small sections repaint fine; wide column strips don't). Re-render the
+    // current section so changed settings actually paint. Debounced so slider
+    // drags don't thrash; skipped on first application (fresh iframes bake
+    // the theme in at load).
+    if (appliedRef.current !== rendition) {
+      appliedRef.current = rendition;
+      return;
+    }
+    const nudge = setTimeout(() => {
+      try {
+        const loc = rendition.currentLocation() as unknown as {
+          start?: { cfi?: string };
+        };
+        const cfi = loc?.start?.cfi;
+        if (cfi) {
+          (rendition as unknown as { clear(): void }).clear();
+          void rendition.display(cfi);
+        }
+      } catch {
+        /* repaint nudge is best-effort */
+      }
+    }, 180);
+    return () => clearTimeout(nudge);
   }, [
     rendition,
     theme,

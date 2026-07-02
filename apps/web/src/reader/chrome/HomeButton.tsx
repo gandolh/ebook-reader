@@ -23,14 +23,14 @@ function HomeIcon() {
       <path
         d="M3 10.5L12 3l9 7.5"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M5.5 9.5V20a1 1 0 001 1H10v-5.5a2 2 0 014 0V21h3.5a1 1 0 001-1V9.5"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

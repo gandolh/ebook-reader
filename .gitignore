@@ -37,3 +37,6 @@ playwright/
 
 # Personal test books (not for the repo)
 testing_files/
+
+# Impeccable skill local state
+.impeccable/

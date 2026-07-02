@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 
 import { useChromeHold } from "./use-auto-hide-chrome";
@@ -33,17 +34,31 @@ export function TocDrawer({
   onOpenChange,
   entries,
   onNavigate,
+  currentId = null,
   title = "Contents",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   entries: TocEntry[];
   onNavigate: (entry: TocEntry) => void;
+  /** Entry id of the chapter currently being read — highlighted + scrolled to. */
+  currentId?: string | null;
   title?: string;
 }) {
   // Keep the chrome visible while the drawer is open so closing it doesn't
   // land the user on a hidden toolbar.
   useChromeHold(open);
+
+  // Opening the drawer answers "where am I?" — bring the current chapter into
+  // view without animation (it's an initial position, not a movement).
+  const currentRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const id = requestAnimationFrame(() => {
+      currentRef.current?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open, currentId]);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -67,18 +82,32 @@ export function TocDrawer({
               </p>
             ) : (
               <ul>
-                {entries.map((entry) => (
-                  <li key={entry.id}>
-                    <button
-                      type="button"
-                      onClick={() => onNavigate(entry)}
-                      style={{ paddingLeft: `${0.5 + entry.depth * 0.75}rem` }}
-                      className="block w-full rounded-md py-1.5 pr-2 text-left text-sm text-reader-fg/85 hover:bg-reader-surface"
-                    >
-                      {entry.label}
-                    </button>
-                  </li>
-                ))}
+                {entries.map((entry) => {
+                  const isCurrent = currentId !== null && entry.id === currentId;
+                  return (
+                    <li key={entry.id} ref={isCurrent ? currentRef : undefined}>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(entry)}
+                        aria-current={isCurrent ? "true" : undefined}
+                        style={{ paddingLeft: `${0.5 + entry.depth * 0.75}rem` }}
+                        className={`relative block w-full rounded-md py-1.5 pr-2 text-left text-sm transition-colors ${
+                          isCurrent
+                            ? "bg-reader-surface font-medium text-reader-fg"
+                            : "text-reader-fg/85 hover:bg-reader-surface"
+                        }`}
+                      >
+                        {isCurrent && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute left-0 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-reader-accent"
+                          />
+                        )}
+                        {entry.label}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </nav>
@@ -94,7 +123,7 @@ function CloseIcon() {
       <path
         d="M6 6l12 12M18 6L6 18"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.75"
         strokeLinecap="round"
       />
     </svg>

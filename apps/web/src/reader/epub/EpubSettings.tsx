@@ -2,14 +2,15 @@ import { SliderControl, ThemePicker } from "../chrome";
 import { useReaderStore } from "../../store/reader-store";
 
 /**
- * EPUB settings body (brief 07) — the font/theme controls that make EPUB the
- * "star" reflowable experience. Rendered inside the shared `SettingsPopover`
- * (the other half of the format-adaptive seam). All values live in Zustand
- * (`fontSettings`, `theme`); the reader mirrors them onto the epub.js
- * `rendition.themes` so the reflowed text actually re-typesets/re-colors.
+ * EPUB settings body (the "Aa" panel) — the font/theme controls that make EPUB
+ * the "star" reflowable experience. Rendered inside the shared
+ * `SettingsPopover`. All values live in Zustand (`fontSettings`, `theme`); the
+ * reader mirrors them onto the epub.js `rendition.themes` so the reflowed text
+ * actually re-typesets/re-colors.
  *
- * Controls (wiki/reader.md EPUB row): font size, font family, line-spacing,
- * margins + full light/sepia/dark themes.
+ * Grammar borrowed from Kindle/Books: theme swatches as miniature pages, font
+ * choices shown as specimens in their own face, A−/A+ steppers flanking the
+ * size slider.
  */
 
 /** Font family options mapped to concrete CSS stacks epub.js can apply. */
@@ -32,42 +33,81 @@ export function EpubSettings() {
   const fontSettings = useReaderStore((s) => s.fontSettings);
   const setFontSettings = useReaderStore((s) => s.setFontSettings);
 
+  const stepSize = (delta: number) =>
+    setFontSettings({
+      size: Math.min(FONT_SIZE.max, Math.max(FONT_SIZE.min, fontSettings.size + delta)),
+    });
+
   return (
     <>
       <ThemePicker />
 
-      <SliderControl
-        label="Font size"
-        value={fontSettings.size}
-        min={FONT_SIZE.min}
-        max={FONT_SIZE.max}
-        step={1}
-        onValueChange={(size) => setFontSettings({ size })}
-        format={(v) => `${v}px`}
-      />
-
       <div className="flex flex-col gap-1.5">
         <span className="text-xs text-reader-fg/70">Font</span>
-        <div className="flex gap-1 rounded-md bg-reader-surface p-1">
+        <div role="radiogroup" aria-label="Font" className="flex gap-2">
           {FONT_FAMILIES.map((f) => {
             const selected = fontSettings.family === f.value;
             return (
               <button
                 key={f.value}
                 type="button"
+                role="radio"
+                aria-checked={selected}
                 onClick={() => setFontSettings({ family: f.value })}
-                style={{ fontFamily: f.stack }}
-                className={`flex-1 rounded px-2 py-1 text-xs transition ${
-                  selected
-                    ? "bg-reader-bg text-reader-fg shadow-sm"
-                    : "text-reader-fg/70"
-                }`}
+                className="flex flex-1 flex-col items-center gap-1 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-reader-accent"
               >
-                {f.label}
+                <span
+                  aria-hidden="true"
+                  className={`grid h-11 w-full place-items-center rounded-lg border border-reader-border bg-reader-surface text-base text-reader-fg transition-shadow ${
+                    selected ? "ring-2 ring-reader-accent" : ""
+                  }`}
+                  style={{ fontFamily: f.stack }}
+                >
+                  Aa
+                </span>
+                <span
+                  className={`text-[11px] ${
+                    selected ? "font-medium text-reader-fg" : "text-reader-fg/60"
+                  }`}
+                >
+                  {f.label}
+                </span>
               </button>
             );
           })}
         </div>
+      </div>
+
+      <div className="flex items-end gap-2">
+        <button
+          type="button"
+          aria-label="Decrease font size"
+          onClick={() => stepSize(-1)}
+          disabled={fontSettings.size <= FONT_SIZE.min}
+          className="grid h-8 w-9 shrink-0 place-items-center rounded-lg border border-reader-border text-xs text-reader-fg/80 transition hover:bg-reader-surface disabled:opacity-30"
+        >
+          A−
+        </button>
+        <div className="min-w-0 flex-1">
+          <SliderControl
+            label="Font size"
+            value={fontSettings.size}
+            min={FONT_SIZE.min}
+            max={FONT_SIZE.max}
+            step={1}
+            onValueChange={(size) => setFontSettings({ size })}
+            format={(v) => `${v}px`}
+          />
+        </div>
+        <button
+          type="button"
+          aria-label="Increase font size"
+          onClick={() => stepSize(1)}
+          disabled={fontSettings.size >= FONT_SIZE.max}
+          className="grid h-8 w-9 shrink-0 place-items-center rounded-lg border border-reader-border text-base text-reader-fg/80 transition hover:bg-reader-surface disabled:opacity-30"
+        >
+          A+
+        </button>
       </div>
 
       <SliderControl

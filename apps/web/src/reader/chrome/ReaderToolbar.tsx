@@ -46,11 +46,12 @@ export function ReaderToolbar({
   useChromeHold(pointerOver || focusWithin);
 
   return (
+    // The wrapper spans the full bottom strip but must never eat pointer
+    // events — the progress rail lives underneath it (z-20). Only the pill
+    // itself is interactive, and only while the chrome is visible.
     <div
-      className={`fixed inset-x-0 bottom-0 z-30 transition-all duration-300 ${
-        chromeVisible
-          ? "translate-y-0 opacity-100"
-          : "pointer-events-none translate-y-2 opacity-0"
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-30 transition-all duration-300 ${
+        chromeVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
       }`}
       onMouseEnter={() => setPointerOver(true)}
       onMouseLeave={() => setPointerOver(false)}
@@ -63,7 +64,11 @@ export function ReaderToolbar({
     >
       {/* flex-wrap: on narrow (mobile) viewports the controls flow onto a
           second row instead of clipping off the right edge. */}
-      <div className="mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-center gap-2 rounded-xl border border-reader-border bg-reader-surface/95 px-3 py-2 shadow-lg backdrop-blur">
+      <div
+        className={`mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-center gap-2 rounded-2xl border border-reader-border/80 bg-reader-surface/95 px-3 py-2 shadow-xl shadow-black/5 backdrop-blur ${
+          chromeVisible ? "pointer-events-auto" : ""
+        }`}
+      >
         <div className="flex items-center gap-1">{leftControls}</div>
         <div className="flex flex-1 items-center justify-center gap-1">
           {formatControls}

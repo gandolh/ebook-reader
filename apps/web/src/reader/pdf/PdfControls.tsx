@@ -78,7 +78,7 @@ function icon(children: ReactNode) {
 
 const stroke = {
   stroke: "currentColor",
-  strokeWidth: 2,
+  strokeWidth: 1.75,
   strokeLinecap: "round" as const,
   strokeLinejoin: "round" as const,
 };

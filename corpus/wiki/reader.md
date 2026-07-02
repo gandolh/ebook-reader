@@ -3,10 +3,21 @@
 The heart of the app. Two renderers (PDF, EPUB) sharing one **Kindle-style
 chrome**. 100% client-side.
 
-## Entry: smart uploader
-One dropzone. Detect by extension/MIME (D13):
-- **PDF** → open PDF reader.
-- **EPUB** → fork: **Read** (native) or **Convert to PDF**.
+## Entry: one-step uploader (2026-07-02)
+One dropzone. Detect by extension/MIME (D13). **Both formats open the reader
+directly — no fork screen.** EPUB→PDF export moved into the EPUB reader's
+toolbar as a secondary "Download as PDF" button (see conversion.md).
+
+## The "quiet paper" reading surface (2026-07-02 redesign)
+The page is the interface (PRODUCT.md). EPUB renders as a **single centered,
+measure-capped column** (`spread: none`). Orientation lives at the edges and
+fades with the chrome: running header (book title / current chapter), footer
+"chapter · %" button (opens TOC at the current chapter), and a **scrubbable
+progress rail** along the bottom edge (chapter ticks in locations-space, hover
+tooltip, click/arrow-key seek). Settings is a Kindle-style **"Aa" panel**:
+theme swatches drawn as miniature pages, font specimens, A−/A+ steppers.
+Loading is a skeleton page; TOC/search jumps crossfade via an overlay veil
+(never opacity on the iframe's ancestors — Chromium raster staleness).
 
 ## Renderers
 - **PDF** — `react-pdf` (PDF.js): lazy per-page rendering, text layer for

@@ -1,6 +1,13 @@
 # Status — 2026-07-02 (post test run)
 
-**Phase:** ✅ **v1 verified in a real browser — ready for personal use.**
+**Phase:** ✅ **v1 verified + "quiet paper" redesign shipped (2026-07-02 pm).**
+
+Since the morning test run: the EPUB reader got a designer pass (single centered
+column, running header, scrubbable chapter-tick progress rail, "Aa" settings
+panel, chapter-aware TOC/search, skeleton loading) and the upload flow collapsed
+to one step — upload → read for both formats, with "Download as PDF" as a
+secondary toolbar action inside the EPUB reader. PRODUCT.md now anchors design
+work. See log entry + wiki/reader.md.
 
 All 7 briefs done + a full Playwright test run against real files (arXiv PDF +
 a real 24MB commercial EPUB) with live Calibre. Both former verification gaps

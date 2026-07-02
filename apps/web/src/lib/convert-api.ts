@@ -28,6 +28,24 @@ export const CONVERT_ERROR_MESSAGES: Record<ConvertError["code"], string> = {
   CALIBRE_MISSING: "Calibre isn't available on the server.",
 };
 
+/** `book.epub` → `book.pdf` (download filename for a converted EPUB). */
+export function pdfFilenameFor(originalName: string): string {
+  const base = originalName.replace(/\.epub$/i, "");
+  return `${base}.pdf`;
+}
+
+/** Trigger a browser download of a blob under the given filename. */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Uploads an EPUB `File` and resolves with the converted PDF as a `Blob`. */
 export async function convertEpubToPdf(file: File): Promise<Blob> {
   const formData = new FormData();

@@ -58,7 +58,7 @@ export function PageNav({
           aria-label="Previous page"
           onClick={onPrev}
           disabled={!canPrev}
-          className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-reader-border bg-reader-surface/90 text-reader-fg shadow-md backdrop-blur transition hover:bg-reader-surface disabled:opacity-30"
+          className="pointer-events-auto hidden h-10 w-10 place-items-center rounded-full bg-reader-surface/80 text-reader-fg/70 shadow-sm backdrop-blur transition hover:bg-reader-surface hover:text-reader-fg disabled:opacity-30 pointer-fine:grid"
         >
           <ChevronLeftIcon />
         </button>
@@ -73,7 +73,7 @@ export function PageNav({
           aria-label="Next page"
           onClick={onNext}
           disabled={!canNext}
-          className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-reader-border bg-reader-surface/90 text-reader-fg shadow-md backdrop-blur transition hover:bg-reader-surface disabled:opacity-30"
+          className="pointer-events-auto hidden h-10 w-10 place-items-center rounded-full bg-reader-surface/80 text-reader-fg/70 shadow-sm backdrop-blur transition hover:bg-reader-surface hover:text-reader-fg disabled:opacity-30 pointer-fine:grid"
         >
           <ChevronRightIcon />
         </button>
@@ -88,7 +88,7 @@ function ChevronLeftIcon() {
       <path
         d="M15 18l-6-6 6-6"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -102,7 +102,7 @@ function ChevronRightIcon() {
       <path
         d="M9 18l6-6-6-6"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
