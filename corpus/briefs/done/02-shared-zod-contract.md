@@ -29,3 +29,12 @@ validation, imported by both apps so they can't drift ([decisions.md](../../wiki
 - Both a "detect file type" function and the error schema/types are exported and
   importable.
 - No runtime deps beyond `zod`.
+
+---
+## Outcome [2026-07-02]
+Shipped. Exports: `detectFileType()`, `isFileSizeValid()`, `maxUploadBytesFromMb()`,
+`DEFAULT_MAX_UPLOAD_MB` (50), PDF/EPUB MIME+ext sets; `convertRequestSchema`
+(EPUB-only); `convertErrorSchema` `{error, code}` with code union
+`INVALID_FILE|TOO_LARGE|CONVERT_FAILED|TIMEOUT|CALIBRE_MISSING`; inferred types
+for each. Preserved legacy `SUPPORTED_FORMATS`/`Format` the apps import. zod-only.
+`npm run typecheck` passes across all workspaces.

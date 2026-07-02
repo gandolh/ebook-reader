@@ -20,3 +20,10 @@ Vite 6, Fastify 5 (`tsx watch`, port 3001, `/health`), shared = zod lib. Verifie
 `npm install` clean, `npm run typecheck` passes across all three, shared resolves
 in both apps. Deferred: gitignored `shared/dist` needs a build before cold-clone
 typecheck. See [briefs/done/01-monorepo-scaffold.md](briefs/done/01-monorepo-scaffold.md).
+
+## [2026-07-02] done | Brief 02 — shared Zod contract
+
+`packages/shared` now the source of truth: `detectFileType`, size guards,
+`convertRequestSchema` (EPUB-only), `convertErrorSchema` (`{error, code}` union).
+Legacy `SUPPORTED_FORMATS`/`Format` preserved for the apps. Typecheck passes.
+See [briefs/done/02-shared-zod-contract.md](briefs/done/02-shared-zod-contract.md).
