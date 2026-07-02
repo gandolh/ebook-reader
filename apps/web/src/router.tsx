@@ -41,7 +41,13 @@ const readRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([homeRoute, readRoute]);
 
-export const router = createRouter({ routeTree });
+// `basepath` matches Vite's `base` (import.meta.env.BASE_URL) so client-side
+// routing stays under the deploy sub-path (e.g. /ebook-reader/). It's "/" in dev,
+// which TanStack treats as no prefix.
+export const router = createRouter({
+  routeTree,
+  basepath: import.meta.env.BASE_URL,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

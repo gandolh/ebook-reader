@@ -69,6 +69,10 @@ export function EpubReader({ file }: { file: File }) {
   const [tocOpen, setTocOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [percent, setPercent] = useState<number | null>(null);
+  // "Page" here = epub.js location index (fixed ~1000-char chunks), the only
+  // stable page-like unit a reflowable book has. Shown as `page/totalPages`.
+  const [page, setPage] = useState<number | null>(null);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
   const [bookTitle, setBookTitle] = useState<string | null>(null);
   const [currentTocId, setCurrentTocId] = useState<string | null>(null);
   const [chapterLabel, setChapterLabel] = useState<string | null>(null);
@@ -114,6 +118,8 @@ export function EpubReader({ file }: { file: File }) {
     setRendition(null);
     setToc([]);
     setPercent(null);
+    setPage(null);
+    setTotalPages(null);
     setBookTitle(null);
     setCurrentTocId(null);
     setChapterLabel(null);
@@ -129,24 +135,45 @@ export function EpubReader({ file }: { file: File }) {
     };
   }, [file, setCurrentLocation]);
 
+  // Pull percentage + location index (page) from the rendition's current
+  // position. Location index is only meaningful once locations are generated —
+  // and right at generation time `currentLocation()` may not carry it yet
+  // (locations can finish before the first render settles), so fall back to
+  // resolving the CFI against the locations list directly.
+  const refreshProgress = useCallback((r: Rendition) => {
+    try {
+      const current = r.currentLocation() as unknown as {
+        start?: { percentage?: number; location?: number; cfi?: string };
+      };
+      const start = current?.start;
+      const p = start?.percentage;
+      if (typeof p === "number" && p >= 0) setPercent(Math.round(p * 100));
+
+      const locations = r.book.locations as unknown as {
+        length(): number;
+        locationFromCfi(cfi: string): number;
+      };
+      if (!locations.length()) return;
+      let loc = start?.location;
+      if (typeof loc !== "number" || loc < 0) {
+        const storeCfi = useReaderStore.getState().currentLocation;
+        const cfiStr = start?.cfi ?? (typeof storeCfi === "string" ? storeCfi : null);
+        if (cfiStr) loc = Number(locations.locationFromCfi(cfiStr));
+      }
+      if (typeof loc === "number" && loc >= 0) setPage(loc + 1);
+    } catch {
+      /* progress readout is best-effort */
+    }
+  }, []);
+
   const onLocationChanged = useCallback(
     (loc: string) => {
       setCurrentLocation(loc);
-      // Derive a reading percentage from epub.js locations if generated,
-      // otherwise from the current spine position.
-      const r = rendition;
-      if (!r) return;
-      try {
-        const current = r.currentLocation() as unknown as {
-          start?: { percentage?: number };
-        };
-        const p = current?.start?.percentage;
-        if (typeof p === "number" && p >= 0) setPercent(Math.round(p * 100));
-      } catch {
-        /* percentage best-effort */
-      }
+      // Derive progress from epub.js locations if generated, otherwise from
+      // the current spine position.
+      if (rendition) refreshProgress(rendition);
     },
-    [rendition, setCurrentLocation],
+    [rendition, setCurrentLocation, refreshProgress],
   );
 
   const onGetRendition = useCallback((r: Rendition) => {
@@ -158,24 +185,32 @@ export function EpubReader({ file }: { file: File }) {
       .catch(() => {
         /* header falls back to nothing */
       });
-    // Generate coarse locations in the background so the progress % is stable
+    // Generate coarse locations in the background so progress is stable
     // (1000-char granularity keeps this fast even for large books). Until this
-    // resolves, percentages come back 0 — refresh once it's done so the
-    // indicator doesn't stay at 0% until the next page turn.
+    // resolves, percentages come back 0 and there's no page count — refresh
+    // once it's done so the indicator doesn't stall until the next page turn.
     r.book.ready
       .then(() => r.book.locations.generate(1000))
       .then(() => {
         setLocationsReady(true);
-        const current = r.currentLocation() as unknown as {
-          start?: { percentage?: number };
-        };
-        const p = current?.start?.percentage;
-        if (typeof p === "number" && p >= 0) setPercent(Math.round(p * 100));
+        const total = (r.book.locations as unknown as { length(): number }).length();
+        if (total > 0) setTotalPages(total);
+        refreshProgress(r);
       })
       .catch(() => {
         /* progress falls back to spine percentage */
       });
-  }, []);
+  }, [refreshProgress]);
+
+  // Belt-and-braces for the badge: whichever finishes last — locations
+  // generation or the first render — a `relocated` event re-reads progress, so
+  // the page counter can't get stuck on its pre-locations fallback.
+  useEffect(() => {
+    if (!rendition) return;
+    const onRelocated = () => refreshProgress(rendition);
+    rendition.on("relocated", onRelocated);
+    return () => rendition.off("relocated", onRelocated);
+  }, [rendition, refreshProgress]);
 
   const onTocChanged = useCallback((next: NavItem[]) => setToc(next), []);
 
@@ -355,6 +390,20 @@ export function EpubReader({ file }: { file: File }) {
 
   const openTocFromFooter = useCallback(() => setTocOpen(true), []);
 
+  // Footer badge text. Once the location count exists, ALWAYS show pages —
+  // derive from percent if the exact index hasn't been read yet — so the badge
+  // never sits on "0%" waiting for an interaction. Percent only appears for
+  // the brief window while locations are still generating.
+  const displayedPage =
+    totalPages != null
+      ? Math.min(
+          totalPages,
+          page ?? Math.max(1, Math.round(((percent ?? 0) / 100) * totalPages)),
+        )
+      : null;
+  const progressBadge =
+    displayedPage != null ? `${displayedPage}/${totalPages}` : `${percent ?? 0}%`;
+
   // Secondary action: export this EPUB as a PDF (server round-trip through
   // Calibre). The main flow is reading — this is one toolbar button, never a
   // screen of its own (D1: conversion is an export utility).
@@ -399,6 +448,10 @@ export function EpubReader({ file }: { file: File }) {
         ...ReactReaderStyle.readerArea,
         background: "transparent",
         boxShadow: "none",
+        // The default `transition: all .3s ease` exists for react-reader's
+        // built-in TOC slide (hidden here) — without the TOC it only adds
+        // laggy easing to resizes.
+        transition: "none",
       },
     }),
     [],
@@ -440,6 +493,11 @@ export function EpubReader({ file }: { file: File }) {
             tocChanged={onTocChanged}
             showToc={false}
             swipeable={false}
+            // Passing ANY handleKeyPress disables react-reader's built-in
+            // arrow-key paging (a document-level keyup listener). Without
+            // this, one arrow press turns the page TWICE — once via our
+            // keydown handlers, once via theirs — a visible double-flip.
+            handleKeyPress={() => {}}
             readerStyles={readerStyles}
             loadingView={<SkeletonPage />}
             epubOptions={{ flow: "paginated", spread: "none" }}
@@ -461,6 +519,7 @@ export function EpubReader({ file }: { file: File }) {
 
       <ProgressRail
         percent={percent ?? 0}
+        totalPages={totalPages}
         ticks={railTicks}
         visible={chromeVisible}
         onSeek={onSeek}
@@ -543,7 +602,7 @@ export function EpubReader({ file }: { file: File }) {
               </span>
             )}
             <span className="shrink-0 rounded bg-reader-surface px-1.5 py-0.5 text-xs tabular-nums text-reader-fg/70">
-              {percent ?? 0}%
+              {progressBadge}
             </span>
           </button>
         }

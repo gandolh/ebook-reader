@@ -15,12 +15,15 @@ export interface RailTick {
  */
 export function ProgressRail({
   percent,
+  totalPages,
   ticks,
   visible,
   onSeek,
 }: {
   /** Current position, 0–100. */
   percent: number;
+  /** Total location-based page count; tooltip shows pages when available. */
+  totalPages?: number | null;
   ticks: RailTick[];
   visible: boolean;
   /** Jump to a 0–100 position. */
@@ -64,7 +67,9 @@ export function ProgressRail({
           style={{ left: hover.x }}
         >
           {hoverLabel ? `${hoverLabel} · ` : ""}
-          {Math.round(hover.pct)}%
+          {totalPages
+            ? `${Math.max(1, Math.min(totalPages, Math.round((hover.pct / 100) * totalPages)))}/${totalPages}`
+            : `${Math.round(hover.pct)}%`}
         </div>
       )}
 
