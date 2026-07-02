@@ -31,3 +31,15 @@ the state store, ready for the uploader and readers. See
 - Tailwind classes apply; a Base UI Dialog opens.
 - Zustand store + Query provider are in place.
 - Typecheck clean; shared package imports resolve.
+
+---
+## Outcome [2026-07-02]
+Shipped. Code-based TanStack Router (`/` home, `/read` with Zod-validated `format`
+search param), QueryClientProvider, Zustand reader store (theme/fontSettings/
+currentLocation/chromeVisible/layoutMode + setters + reset), Tailwind v4 (CSS-first
+`@import`, light/sepia/dark tokens as `--reader-*` vars via `@theme inline`), Base UI
+Dialog proven. `api-client.ts` reads `VITE_API_URL`. Deleted old `App.tsx`.
+**Base UI package = `@base-ui/react@1.6.0`** (current; `@base-ui-components/react` is
+legacy). Chose code-based routes over the file-based plugin (simpler for 2 routes).
+Verified: typecheck clean ×3, Vite build ok, dev boot serves both routes, Dialog
+resolves. All web deps later pinned exact (D21).

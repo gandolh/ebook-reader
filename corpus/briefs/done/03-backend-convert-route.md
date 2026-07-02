@@ -34,3 +34,16 @@ The only backend feature. Stateless Fastify route wrapping Calibre. See
   error and clean up temp files.
 - Server boots and warns (not crashes) when Calibre is absent.
 - `npm run typecheck` clean.
+
+---
+## Outcome [2026-07-02]
+Shipped. Modules: `config.ts`, `calibre.ts` (spawn + self-enforced timeout→SIGKILL,
+discriminated outcome), `temp-files.ts` (mkdtemp + recursive dispose), `convert-route.ts`.
+Errors→HTTP: INVALID_FILE 400, TOO_LARGE 413, TIMEOUT 504, CONVERT_FAILED 500,
+CALIBRE_MISSING 500 — all bodies match shared `convertErrorSchema`. CORS permissive,
+multipart capped at MAX_UPLOAD_BYTES, loud non-fatal Calibre startup warning.
+Verified: typecheck passes; boot + INVALID_FILE/CALIBRE_MISSING/no-file paths tested
+live (fetch), zero leftover temp dirs. **Calibre NOT installed on dev box** → live
+EPUB→PDF conversion unverified (CALIBRE_MISSING path confirmed instead). Deps pinned:
+`@fastify/cors 11.2.0`, `@fastify/multipart 10.0.0`. Note: success path reads PDF into
+memory before send (safe cleanup, <50MB ceiling).

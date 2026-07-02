@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/*
+ * Reader theme tokens (light/sepia/dark) as CSS variables (wiki/reader.md).
+ * The chrome + renderers (briefs 06/07) read these via `data-theme` on a
+ * root element; Zustand's `theme` field drives which one is active. Only
+ * the tokens are defined here — no reader UI in this brief.
+ */
+:root,
+[data-theme="light"] {
+  --reader-bg: #ffffff;
+  --reader-fg: #1a1a1a;
+  --reader-surface: #f5f5f5;
+  --reader-border: #e2e2e2;
+  --reader-accent: #2563eb;
+}
+
+[data-theme="sepia"] {
+  --reader-bg: #f4ecd8;
+  --reader-fg: #3b2f1e;
+  --reader-surface: #ece0c8;
+  --reader-border: #d9c9a3;
+  --reader-accent: #92400e;
+}
+
+[data-theme="dark"] {
+  --reader-bg: #181818;
+  --reader-fg: #e8e8e8;
+  --reader-surface: #242424;
+  --reader-border: #3a3a3a;
+  --reader-accent: #60a5fa;
+}
+
+@theme inline {
+  --color-reader-bg: var(--reader-bg);
+  --color-reader-fg: var(--reader-fg);
+  --color-reader-surface: var(--reader-surface);
+  --color-reader-border: var(--reader-border);
+  --color-reader-accent: var(--reader-accent);
+}
+
+body {
+  margin: 0;
+  background-color: var(--reader-bg);
+  color: var(--reader-fg);
+  font-family: system-ui, sans-serif;
+}

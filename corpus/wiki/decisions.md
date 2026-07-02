@@ -26,6 +26,8 @@ revisit + a `log.md` note.
 | D19 | **In-book search IS in v1** | Kept during scoping |
 | D20 | **Tailwind v4** (with `@base-ui/react`) | Matches Base UI's documented examples; greenfield 2026 build |
 | D21 | **Pinned exact dependency versions** (no `^`/`~`), latest stable | Reproducible installs; ranges had already drifted (TS `^5.7.3`→5.9.3) |
+| D22 | **Base UI = `@base-ui/react`** (not `@base-ui-components/react`) | `@base-ui/react@1.6.0` is current; the `-components` name is legacy/stuck |
+| D23 | **Node ≥22** (`.nvmrc` 22.23.1, `engines` `>=22`) | Dev box is 22.23.1; pinned to installed version (no version manager present) |
 
 ## After-conversion UX (D1 detail)
 Two buttons only: **Download** (save the PDF) and **Go back** (return to

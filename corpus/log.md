@@ -33,3 +33,20 @@ See [briefs/done/02-shared-zod-contract.md](briefs/done/02-shared-zod-contract.m
 User: all deps pinned exact (no `^`/`~`), latest stable. Retrofitted root +
 `packages/shared` to installed versions (concurrently 9.2.3, typescript 5.9.3,
 zod 3.25.76). In-flight briefs 03/04 told to pin what they add. Recorded as D21.
+
+## [2026-07-02] done | Brief 03 — backend /convert route
+
+Stateless Fastify `POST /convert` (config/calibre/temp-files/convert-route modules).
+Validates via shared schemas, spawns `ebook-convert` with 60s timeout, streams PDF
+as attachment, cleans temp in `finally`. Error→HTTP mapping wired to shared
+`convertErrorSchema`. Deps pinned (`@fastify/cors 11.2.0`, `@fastify/multipart 10.0.0`),
+`fastify` pinned to 5.9.0. Verified except live conversion (Calibre absent on dev box).
+See [briefs/done/03-backend-convert-route.md](briefs/done/03-backend-convert-route.md).
+
+## [2026-07-02] done | Brief 04 — frontend shell
+
+Vite+React shell: code-based TanStack Router (`/`, `/read`), Query provider,
+Zustand reader store, Tailwind v4 (theme tokens), Base UI Dialog proven, api
+client reading `VITE_API_URL`. Base UI package confirmed `@base-ui/react@1.6.0`
+(D22). All web deps pinned exact; Node pinned ≥22 / `.nvmrc` 22.23.1 (D23).
+Wave 3 complete. See [briefs/done/04-frontend-shell.md](briefs/done/04-frontend-shell.md).
