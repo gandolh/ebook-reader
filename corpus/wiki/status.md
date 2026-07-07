@@ -1,10 +1,17 @@
 # Status — 2026-07-07
 
-**Latest:** ✅ **Brief 08 — draggable progress rail, both readers** (2026-07-07 pm).
+**Latest:** ✅ **Brief 09 — platform password** (2026-07-07 pm, D28 revises D2).
+`APP_PASSWORD` on the API gates everything (stateless sha256 token, Bearer or
+`?token=` for covers); Quiet-Paper lock screen, localStorage persistence,
+re-lock on 401; unset env → auth off + warning. Review-hardened (log redaction,
+duplicate-token 401, no 401 retries). Verified end-to-end headless.
+**Deploy note: set `APP_PASSWORD` on the VPS or the deployment stays open.**
+
+**Also today:** ✅ **Brief 08 — draggable progress rail, both readers**.
 The scrub rail is now shared chrome: pointer-capture drag with live preview,
 commit-on-release; the PDF reader gained the rail (outline ticks, page tooltip).
 Verified headless (10/10 checks, both fixtures, zero console errors). Remaining
-open todos: platform password, loading-state polish (needs the live link).
+open todos: loading-state polish (needs the live link).
 New open question: library DB stores absolute file paths (dead rows after a
 checkout move — see [open-questions.md](open-questions.md)).
 
@@ -53,3 +60,4 @@ errors on a fresh load. Typecheck clean ×3.
 | 01–07 | v1 build | **done** |
 | — | Full browser verification + UI audit | **done (2026-07-02)** |
 | 08 | Draggable progress rail (shared, both readers) | **done (2026-07-07)** |
+| 09 | Platform password (`APP_PASSWORD`, D28) | **done (2026-07-07)** |

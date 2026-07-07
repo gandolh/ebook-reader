@@ -217,3 +217,19 @@ zero console errors; typecheck clean ×3. See
 [wiki/reader.md](wiki/reader.md). Env note: the library DB rows from the old
 `/home/gandolh` checkout point at dead absolute paths (500s on file/cover) —
 pre-existing, worked around by re-uploading fixtures; filed as an open question.
+
+## [2026-07-07] done | Brief 09 — platform password (D28, revises D2)
+
+The whole platform now gates behind one shared password (`APP_PASSWORD` env on
+the API; unset → auth off + loud startup warning, dev stays frictionless).
+API-enforced `onRequest` guard (allowlist: login/status/health/OPTIONS);
+stateless token = `sha256hex(password)` accepted as `Authorization: Bearer` or
+`?token=` (cover `<img>`s); web stores it in `localStorage`, shows a Quiet-Paper
+lock screen (gate in `root-layout.tsx`), and re-locks on any non-login 401.
+Built via plan-split-dispatch (haiku contract / opus API / sonnet web); two
+sonnet review finders caught three real issues, all fixed: token redacted from
+request logs, duplicate `?token=` no longer 500s (clean 401), React Query stops
+retrying 401s. Verified end-to-end headless: 10/10 with auth on, disabled mode
+clean, zero unexpected console errors, typecheck ×3. See
+[briefs/done/09-platform-password.md](briefs/done/09-platform-password.md),
+[wiki/decisions.md](wiki/decisions.md) D28.

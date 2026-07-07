@@ -6,7 +6,7 @@ revisit + a `log.md` note.
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | **EPUB→PDF is export-only**, never a reading path | Conversion discards reflow; native EPUB reading is superior |
-| D2 | **Single-user, no auth** | Personal tool; auth is yak-shaving, not the interesting part |
+| ~~D2~~ | ~~**Single-user, no auth**~~ **REVISED 2026-07-07 → D28** | Still single-user, still no accounts — but the public deployment is now gated behind one shared password (see D28). |
 | ~~D3~~ | ~~**No persistence** — upload → read → gone on refresh~~ **REVISED 2026-07-07 → D24** | Superseded: the app now keeps a persistent **library** (server-side SQLite). Reading *position* is still session-only per D9. |
 | ~~D4~~ | ~~**Backend = one stateless `/convert` route**~~ **REVISED 2026-07-07 → D24** | Superseded: backend now also owns the library (CRUD + file/cover storage). `/convert` still exists and is still stateless. |
 | D5 | **Calibre `ebook-convert`** for conversion | Best fidelity; acceptable to require the binary for a personal app |
@@ -32,6 +32,7 @@ revisit + a `log.md` note.
 | D25 | **Thumbnails stored on disk**, not in the DB | `apps/api/images/thumbnails/<id>.jpg`; DB stores only the path. Keeps the DB small/fast, lets HTTP layer cache + serve covers cheaply. Originals live alongside at `apps/api/library/<id>.<ext>`. Both dirs gitignored. |
 | D26 | **Covers extracted server-side** | EPUB: OPF manifest cover image. PDF: render page 1 to a JPEG thumbnail. Missing cover → typographic fallback tile in the UI (see design.md). |
 | D27 | **`wiki/design.md` is the enforced design system** ("Quiet Paper") | Merged from the Stitch exploration + existing `--reader-*` tokens. All `apps/web` work must conform; conformance checklist lives in design.md and is enforced via CLAUDE.md. |
+| D28 | **Platform password via `APP_PASSWORD` env** (brief 09; revises D2) | Single shared password, no accounts. API-enforced `onRequest` guard; stateless token = `sha256hex(password)` via `Authorization: Bearer` or `?token=` (cover `<img>`s can't send headers); token persisted in `localStorage`; env unset → auth off + loud startup warning (dev stays frictionless). Token redacted from request logs. No expiry/rate-limit/sessions — single-user tool. |
 
 ## After-conversion UX (D1 detail)
 Two buttons only: **Download** (save the PDF) and **Go back** (return to
