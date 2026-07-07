@@ -33,7 +33,12 @@ import { useEpubToc } from "./use-epub-toc";
 import { useEpubTheme } from "./use-epub-theme";
 import { createEpubSearchProvider } from "./epub-search";
 import { resolveSpineHref } from "./resolve-spine-href";
-import { buildPageMap, bookPageFromLocation, type EpubPageMap } from "./epub-page-map";
+import {
+  buildPageMap,
+  bookPageFromLocation,
+  type EpubPageMap,
+  type LocationLike,
+} from "./epub-page-map";
 
 /**
  * EPUB reader (brief 07 + "quiet paper" redesign). Wraps `react-reader`
@@ -83,6 +88,11 @@ export function EpubReader({ file }: { file: File }) {
   // layout changes (font size/family/spacing/margins, viewport). Distinct from
   // the char-based `locations` below, which still drive the % rail + seeking.
   const [pageMap, setPageMap] = useState<EpubPageMap | null>(null);
+  // Mirror of `pageMap` for event handlers, so the single `relocated` handler
+  // always reads the LATEST map (a recompute swaps it) without re-subscribing
+  // or capturing a stale map in a closure — a stale map was one cause of the
+  // page number jumping around.
+  const pageMapRef = useRef<EpubPageMap | null>(null);
   const [bookPage, setBookPage] = useState<number | null>(null);
   // "computing" = pre-paginating behind the loading veil (initial or recompute).
   const [pageMapStatus, setPageMapStatus] =
@@ -138,9 +148,12 @@ export function EpubReader({ file }: { file: File }) {
     })
       .then((map) => {
         if (cancelled) return;
+        pageMapRef.current = map;
         setPageMap(map);
         setPageMapStatus("ready");
-        setBookPage(bookPageFromLocation(rendition, map));
+        // Seed the badge from the settled post-walk position.
+        const loc = rendition.currentLocation() as unknown as LocationLike;
+        setBookPage(bookPageFromLocation(loc, map));
       })
       .catch(() => {
         if (!cancelled) setPageMapStatus("failed");
@@ -217,6 +230,7 @@ export function EpubReader({ file }: { file: File }) {
     setToc([]);
     setPercent(null);
     setPageMap(null);
+    pageMapRef.current = null;
     setBookPage(null);
     setPageMapStatus("idle");
     setComputeProgress({ done: 0, total: 0 });
@@ -264,12 +278,11 @@ export function EpubReader({ file }: { file: File }) {
       // reader's real position and would fight react-reader's controlled prop.
       if (computingRef.current) return;
       setCurrentLocation(loc);
-      if (rendition) {
-        refreshProgress(rendition);
-        if (pageMap) setBookPage(bookPageFromLocation(rendition, pageMap));
-      }
+      // The book PAGE number is updated by the single `relocated` handler
+      // (below) from the authoritative event payload — not here, where we'd
+      // have to re-read a possibly-stale currentLocation().
     },
-    [rendition, setCurrentLocation, refreshProgress, pageMap],
+    [setCurrentLocation],
   );
 
   const onGetRendition = useCallback((r: Rendition) => {
@@ -300,14 +313,15 @@ export function EpubReader({ file }: { file: File }) {
   // the page counter can't get stuck on its pre-locations fallback.
   useEffect(() => {
     if (!rendition) return;
-    const onRelocated = () => {
+    const onRelocated = (loc: LocationLike) => {
       if (computingRef.current) return;
       refreshProgress(rendition);
-      if (pageMap) setBookPage(bookPageFromLocation(rendition, pageMap));
+      const map = pageMapRef.current;
+      if (map) setBookPage(bookPageFromLocation(loc, map));
     };
     rendition.on("relocated", onRelocated);
     return () => rendition.off("relocated", onRelocated);
-  }, [rendition, refreshProgress, pageMap]);
+  }, [rendition, refreshProgress]);
 
   const onTocChanged = useCallback((next: NavItem[]) => setToc(next), []);
 

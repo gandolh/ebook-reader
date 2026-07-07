@@ -97,6 +97,12 @@ export async function buildPageMap(
   // Let the column reach its final width first, or the counts (and total) will
   // be measured against a transient layout and jump once when corrected.
   await waitForStableLayout(rendition);
+  // If the pane is degenerate (≈zero width — e.g. the sidebar is crushing it),
+  // pagination is meaningless and would yield garbage counts. Bail with a
+  // single-page map; the caller recomputes once the layout is real.
+  if (stageWidth(rendition) <= 1) {
+    return { offsets: [0], counts: [1], total: 1 };
+  }
 
   // `spineItems` exists at runtime but isn't in epub.js's TS types.
   const spine = book.spine as unknown as {
@@ -115,7 +121,10 @@ export async function buildPageMap(
 
     await rendition.display(section.href);
     const total = readLoc(rendition)?.start?.displayed?.total;
-    counts[idx] = typeof total === "number" && total > 0 ? total : 1;
+    // Guard against a degenerate layout (e.g. a crushed/zero-width pane) where
+    // epub.js can report a non-finite or absurd page count — clamp to ≥ 1 so
+    // the book total can never come out as Infinity/NaN.
+    counts[idx] = Number.isFinite(total) && (total as number) > 0 ? (total as number) : 1;
 
     onProgress?.(i + 1, items.length);
   }
@@ -139,12 +148,24 @@ export async function buildPageMap(
   return { offsets, counts, total: Math.max(acc, 1) };
 }
 
-/** Book-wide page number for a live location, given the page map (clamped). */
+/** The relevant fields of a `relocated` event payload / current location. */
+export interface LocationLike {
+  start?: { index?: number; displayed?: { page?: number } };
+}
+
+/**
+ * Book-wide page number for a location, given the page map (clamped).
+ *
+ * Takes the location OBJECT (the `relocated` event payload) rather than reading
+ * `rendition.currentLocation()` fresh: right after a page turn `currentLocation`
+ * can transiently return the previous/intermediate view, which made the counter
+ * jump backward then forward (e.g. 33 → 25 → 36). The event payload is the
+ * settled position, so the count moves monotonically.
+ */
 export function bookPageFromLocation(
-  rendition: Rendition,
+  loc: LocationLike | null | undefined,
   map: EpubPageMap,
 ): number | null {
-  const loc = readLoc(rendition);
   const idx = loc?.start?.index;
   if (typeof idx !== "number") return null;
   const displayedPage = loc?.start?.displayed?.page ?? 1;

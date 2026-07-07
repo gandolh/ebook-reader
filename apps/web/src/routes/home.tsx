@@ -67,7 +67,7 @@ export function Home() {
       )}
 
       <section aria-label="Your library" className="flex flex-col gap-5">
-        <div className="flex items-baseline justify-between gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
           <h2 className="font-display text-3xl font-semibold text-ink">Recent Reads</h2>
           {books.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-ink-variant">

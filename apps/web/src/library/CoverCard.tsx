@@ -82,7 +82,7 @@ export function CoverCard({
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
             onBlur={() => setMenuOpen(false)}
-            className="grid h-7 w-7 place-items-center rounded text-ink-variant opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-paper-low focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-accent"
+            className="grid h-9 w-9 place-items-center rounded text-ink-variant opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-paper-low focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-accent max-md:opacity-100"
           >
             <DotsGlyph className="h-4 w-4" />
           </button>

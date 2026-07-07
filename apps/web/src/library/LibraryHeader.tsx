@@ -42,7 +42,7 @@ export function LibraryHeader() {
               aria-label={t.label}
               title={t.label}
               onClick={() => setTheme(t.value)}
-              className={`grid h-8 w-9 place-items-center rounded-full transition ${
+              className={`grid h-9 w-11 place-items-center rounded-full transition ${
                 active
                   ? "bg-paper-raised text-accent shadow-sm"
                   : "text-ink-variant hover:text-ink"

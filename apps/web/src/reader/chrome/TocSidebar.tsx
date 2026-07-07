@@ -3,14 +3,19 @@ import { useEffect, useRef } from "react";
 import type { TocEntry } from "./TocDrawer";
 
 /**
- * Docked contents sidebar — the persistent counterpart to `TocDrawer`. Where
- * the drawer is a summoned overlay, this pins open and the reading column
- * shifts to make room (the reader lays it out as a flex sibling). Its open
- * state is a remembered preference (see the store's `tocSidebarOpen`).
+ * Contents sidebar. On desktop (md+) it docks in-flow and the reading column
+ * shifts to make room; on mobile it becomes a slide-in overlay with a scrim
+ * (a docked 288px panel would crush a 375px reading pane to an unusable
+ * sliver). Its open state is a remembered preference (store's `tocSidebarOpen`).
  *
  * Kept deliberately quiet: same warm surface as the page, a hairline divider,
  * the current chapter marked with an accent dot. No dashboard chrome.
  */
+
+/** True when the viewport is in the mobile-overlay range (below Tailwind md). */
+function isMobileViewport(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
 export function TocSidebar({
   open,
   entries,
@@ -39,21 +44,34 @@ export function TocSidebar({
   }, [open, currentId]);
 
   return (
-    <aside
-      // Width animates so the reading column reflows smoothly; when closed the
-      // panel collapses to zero width and stops taking pointer events. The
-      // whole reader honors prefers-reduced-motion via the crossfade veil, so
-      // this width transition is disabled under reduced motion too.
-      // `inert` (when collapsed) pulls the clipped list out of the a11y tree
-      // and tab order — otherwise the hidden entries stay focusable/announced
-      // even at zero width.
-      inert={!open}
-      className={`h-full shrink-0 overflow-hidden border-r border-reader-border bg-reader-bg transition-[width] duration-200 motion-reduce:transition-none ${
-        open ? "w-72" : "w-0 border-r-0"
-      }`}
-    >
-      {/* Fixed inner width so content doesn't reflow while the panel animates. */}
-      <div className="flex h-full w-72 flex-col">
+    <>
+      {/* Mobile scrim — tap to dismiss the overlay. Desktop docking needs none. */}
+      {open && (
+        <div
+          aria-hidden="true"
+          onClick={onClose}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
+
+      <aside
+        // md+ : docked, in-flow; width animates 0↔72 so the reading column
+        //       reflows smoothly and collapses to zero when closed.
+        // <md : fixed slide-in overlay (translate) so it never steals the
+        //       reading pane's width. `inert` when closed pulls the clipped
+        //       list out of the a11y tree + tab order. Motion honors reduce.
+        inert={!open}
+        className={[
+          "h-full overflow-hidden border-reader-border bg-reader-bg",
+          "md:relative md:shrink-0 md:border-r md:transition-[width] md:duration-200 md:motion-reduce:transition-none",
+          open ? "md:w-72" : "md:w-0 md:border-r-0",
+          "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[86vw] max-md:max-w-80 max-md:border-r max-md:shadow-2xl max-md:transition-transform max-md:duration-200 max-md:motion-reduce:transition-none",
+          open ? "max-md:translate-x-0" : "max-md:-translate-x-full",
+        ].join(" ")}
+      >
+      {/* Fixed inner width (desktop) so content doesn't reflow while the panel
+          animates; full width inside the mobile overlay. */}
+      <div className="flex h-full w-72 flex-col max-md:w-full">
         <div className="flex items-center justify-between border-b border-reader-border px-4 py-3">
           <h2 className="text-base font-semibold">{title}</h2>
           <button
@@ -80,7 +98,12 @@ export function TocSidebar({
                   <li key={entry.id} ref={isCurrent ? currentRef : undefined}>
                     <button
                       type="button"
-                      onClick={() => onNavigate(entry)}
+                      onClick={() => {
+                        onNavigate(entry);
+                        // On the mobile overlay, jumping should dismiss the
+                        // panel (like a drawer); the docked desktop panel stays.
+                        if (isMobileViewport()) onClose();
+                      }}
                       aria-current={isCurrent ? "true" : undefined}
                       style={{ paddingLeft: `${0.5 + entry.depth * 0.75}rem` }}
                       className={`relative block w-full rounded-md py-1.5 pr-2 text-left text-sm transition-colors ${
@@ -104,7 +127,8 @@ export function TocSidebar({
           )}
         </nav>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
