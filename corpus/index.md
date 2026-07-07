@@ -11,6 +11,7 @@ The front door. What lives where.
 - [overview.md](wiki/overview.md) — what this project is
 - [architecture.md](wiki/architecture.md) — structural map (monorepo, apps, data flow)
 - [decisions.md](wiki/decisions.md) — locked tech/design choices
+- [design.md](wiki/design.md) — **"Quiet Paper" design system (enforced, D27)**
 - [reader.md](wiki/reader.md) — the reader experience (PDF + EPUB, chrome, features)
 - [conversion.md](wiki/conversion.md) — the EPUB→PDF backend path
 - [status.md](wiki/status.md) — dated snapshot of current state

@@ -3,10 +3,23 @@
 The heart of the app. Two renderers (PDF, EPUB) sharing one **Kindle-style
 chrome**. 100% client-side.
 
-## Entry: one-step uploader (2026-07-02)
-One dropzone. Detect by extension/MIME (D13). **Both formats open the reader
-directly — no fork screen.** EPUB→PDF export moved into the EPUB reader's
-toolbar as a secondary "Download as PDF" button (see conversion.md).
+## Entry: library home (2026-07-07)
+The home page (`/`) is a **persistent library** (D24), styled per
+[design.md](design.md) ("Quiet Paper"). Layout (see
+`design/stitch_extracted/screen.png`): header (theme toggle + icons), a dashed
+**"Add to Library"** dropzone (upload → `POST /library`), then a **cover-card
+gallery** (`GET /library`) with EPUB/PDF badges, title/author, and a 2px blue
+progress bar. Missing cover → typographic fallback tile. Empty state reinforces
+upload. Opening a card fetches `GET /library/:id/file` into the reader; progress
+`PATCH`es back. Delete via a per-card overflow control.
+
+Detection still by extension/MIME (D13). **Both formats open the reader
+directly.** EPUB→PDF export lives in the EPUB reader's toolbar as a secondary
+"Download as PDF" button (see conversion.md).
+
+> Superseded: the old *one-step uploader* (drop → straight to `/read`, no
+> persistence) is replaced by this library. The dropzone UX survives inside the
+> library home.
 
 ## The "quiet paper" reading surface (2026-07-02 redesign)
 The page is the interface (PRODUCT.md). EPUB renders as a **single centered,

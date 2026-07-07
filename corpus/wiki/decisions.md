@@ -7,8 +7,8 @@ revisit + a `log.md` note.
 |---|---|---|
 | D1 | **EPUB→PDF is export-only**, never a reading path | Conversion discards reflow; native EPUB reading is superior |
 | D2 | **Single-user, no auth** | Personal tool; auth is yak-shaving, not the interesting part |
-| D3 | **No persistence** — upload → read → gone on refresh | User handles their own files; keeps backend stateless |
-| D4 | **Backend = one stateless `/convert` route** | Both formats render client-side; conversion is the only server job |
+| ~~D3~~ | ~~**No persistence** — upload → read → gone on refresh~~ **REVISED 2026-07-07 → D24** | Superseded: the app now keeps a persistent **library** (server-side SQLite). Reading *position* is still session-only per D9. |
+| ~~D4~~ | ~~**Backend = one stateless `/convert` route**~~ **REVISED 2026-07-07 → D24** | Superseded: backend now also owns the library (CRUD + file/cover storage). `/convert` still exists and is still stateless. |
 | D5 | **Calibre `ebook-convert`** for conversion | Best fidelity; acceptable to require the binary for a personal app |
 | D6 | **EPUB render = react-reader / epub.js** | De facto standard, React wrapper, fast to Kindle-like reflow |
 | D7 | **PDF render = react-pdf (PDF.js)** | Clean React API, keeps custom chrome control |
@@ -28,6 +28,10 @@ revisit + a `log.md` note.
 | D21 | **Pinned exact dependency versions** (no `^`/`~`), latest stable | Reproducible installs; ranges had already drifted (TS `^5.7.3`→5.9.3) |
 | D22 | **Base UI = `@base-ui/react`** (not `@base-ui-components/react`) | `@base-ui/react@1.6.0` is current; the `-components` name is legacy/stuck |
 | D23 | **Node ≥22** (`.nvmrc` 22.23.1, `engines` `>=22`) | Dev box is 22.23.1; pinned to installed version (no version manager present) |
+| D24 | **Persistent library via SQLite in `apps/api`** (`better-sqlite3`) | Reverses D3. User wanted a saved library of covers. Single-user local file DB; synchronous API is simplest for one user. Still no auth (D2 holds). |
+| D25 | **Thumbnails stored on disk**, not in the DB | `apps/api/images/thumbnails/<id>.jpg`; DB stores only the path. Keeps the DB small/fast, lets HTTP layer cache + serve covers cheaply. Originals live alongside at `apps/api/library/<id>.<ext>`. Both dirs gitignored. |
+| D26 | **Covers extracted server-side** | EPUB: OPF manifest cover image. PDF: render page 1 to a JPEG thumbnail. Missing cover → typographic fallback tile in the UI (see design.md). |
+| D27 | **`wiki/design.md` is the enforced design system** ("Quiet Paper") | Merged from the Stitch exploration + existing `--reader-*` tokens. All `apps/web` work must conform; conformance checklist lives in design.md and is enforced via CLAUDE.md. |
 
 ## After-conversion UX (D1 detail)
 Two buttons only: **Download** (save the PDF) and **Go back** (return to

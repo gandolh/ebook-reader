@@ -18,6 +18,11 @@ Routing profile read by the `orchestrate` skill.
 ## READ / SKIP / SKILLS
 | Area | READ | SKIP | SKILLS |
 |---|---|---|---|
-| frontend (apps/web) | apps/web/src, wiki/reader.md | apps/api | frontend-design, impeccable |
-| backend (apps/api) | apps/api/src, wiki/conversion.md | apps/web | — |
+| frontend (apps/web) | apps/web/src, wiki/reader.md, **wiki/design.md** | apps/api | frontend-design, impeccable |
+| backend (apps/api) | apps/api/src, wiki/conversion.md, wiki/architecture.md (library) | apps/web | — |
 | shared contract | packages/shared, wiki/decisions.md | — | — |
+
+## Design enforcement
+All `apps/web` work MUST conform to **wiki/design.md** ("Quiet Paper", D27) and
+pass its conformance checklist before it's done. See CLAUDE.md "Design
+enforcement".

@@ -34,7 +34,18 @@ corpus/
 
 ## Project one-liner
 
-Personal, single-user, **stateless** ebook reader. Upload → read → gone on
-refresh. No accounts, no persistence, no library. Reads PDF (react-pdf) and EPUB
-(react-reader/epub.js) 100% client-side; a single Fastify route converts
-EPUB→PDF via Calibre for download. See `wiki/overview.md`.
+Personal, single-user ebook reader with a **persistent library**. Upload a PDF
+or EPUB → it's saved (server-side SQLite) and shows as a cover card → reopen and
+read anytime. No accounts (D2). Reads PDF (react-pdf) and EPUB
+(react-reader/epub.js) 100% client-side; the Fastify backend owns the library
+(CRUD + file/cover storage) and still converts EPUB→PDF via Calibre. Reading
+*position* is still session-only (D9). See `wiki/overview.md`.
+
+## Design enforcement (load-bearing)
+
+**`wiki/design.md` ("Quiet Paper") is the enforced design system (D27).** Every
+`apps/web` change MUST conform. Before treating any frontend work as done, run
+its **conformance checklist** (bottom of `design.md`): theme tokens only (no raw
+hex in components), the Playfair / Source Serif 4 / Inter type roles, the radii
++ elevation + spacing rules, sparing accent use, and a visual check against
+`design/stitch_extracted/screen.png` for the library home.

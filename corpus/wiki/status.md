@@ -1,6 +1,10 @@
-# Status — 2026-07-02 (post test run)
+# Status — 2026-07-07
 
-**Phase:** ✅ **v1 verified + "quiet paper" redesign shipped (2026-07-02 pm).**
+**Phase:** 🚧 **Building the persistent library + "Quiet Paper" design system**
+(reverses D3/D4; see D24–D27 and [design.md](design.md)). Corpus updated
+2026-07-07; backend + frontend implementation in progress.
+
+**Prior phase:** ✅ v1 verified + "quiet paper" redesign shipped (2026-07-02 pm).
 
 Since the morning test run: the EPUB reader got a designer pass (single centered
 column, running header, scrubbable chapter-tick progress rail, "Aa" settings

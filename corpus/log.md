@@ -1,5 +1,23 @@
 # Log
 
+## [2026-07-07] decision | Persistent library + "Quiet Paper" design system (reverses D3/D4)
+
+New feature: the home page becomes a **persistent library**. Upload a PDF/EPUB →
+it's saved and shows as a **cover card** in a gallery; reopen anytime.
+
+Product-direction change: this **reverses D3** (no persistence) and amends **D4**
+(backend was one stateless route). New locked decisions: **D24** persistent
+library via SQLite (`better-sqlite3`) in `apps/api`; **D25** thumbnails on disk
+(`apps/api/images/thumbnails/`, path in DB) + originals at `apps/api/library/`;
+**D26** covers extracted server-side (EPUB OPF cover / PDF page-1 render);
+**D27** the merged **[wiki/design.md](wiki/design.md)** ("Quiet Paper") is the
+enforced design system. D2 (single-user, no auth) and D9 (reading *position* is
+session-only) still hold. Design merged from the Stitch exploration
+(`design/stitch_extracted/`) with the existing `--reader-*` reader themes; the
+light reading theme's bg/accent were retuned to match the paper surface.
+Enforcement wired into [CLAUDE.md](CLAUDE.md). See design.md conformance
+checklist. Implementation follows in the next log entries.
+
 ## [2026-07-02] decision | Corpus bootstrapped + full spec ingested
 
 Bootstrapped `corpus/` for the ebook-reader project. Folded the finalized spec
