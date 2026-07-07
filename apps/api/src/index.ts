@@ -15,8 +15,13 @@ import { registerLibraryRoutes } from "./library-routes.js";
 const app = Fastify({ logger: true });
 
 // Permissive CORS — single-user tool, web talks cross-origin via VITE_API_URL
-// (decisions.md D14; no Vite proxy).
-await app.register(cors, { origin: true });
+// (decisions.md D14; no Vite proxy). Enumerate methods so the library routes'
+// PATCH/DELETE (with a JSON body → preflighted) aren't blocked; the default
+// allowlist omits PATCH.
+await app.register(cors, {
+  origin: true,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+});
 
 // 50MB (from MAX_UPLOAD_MB) upload ceiling (D15). @fastify/multipart truncates
 // past this; the route inspects `file.truncated` and returns TOO_LARGE.

@@ -57,7 +57,7 @@ export function ProgressRail({
     <div
       // While hovered the rail (and its tooltip) must rise above the toolbar
       // pill (z-30), which otherwise paints over the tooltip.
-      className={`fixed inset-x-0 bottom-0 transition-opacity duration-300 ${
+      className={`absolute inset-x-0 bottom-0 transition-opacity duration-300 ${
         hover ? "z-40" : "z-20"
       } ${visible ? "opacity-100" : "pointer-events-none opacity-0"}`}
     >

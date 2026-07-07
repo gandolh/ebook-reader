@@ -46,9 +46,27 @@ export interface ReaderState {
    */
   chromeHoldCount: number;
   layoutMode: LayoutMode;
-  /** The in-memory file handed from the uploader (`/`) to the reader (`/read`). */
+  /**
+   * Whether the EPUB contents sidebar is docked open. Unlike reading position
+   * (D9: intentionally not persisted), this is a durable UI *preference* — the
+   * user asked for it to be remembered — so it's mirrored to localStorage.
+   */
+  tocSidebarOpen: boolean;
+  /** The in-memory file handed from the library (`/`) to the reader (`/read`). */
   loadedFile: File | null;
   loadedFormat: Format | null;
+  /**
+   * The library book id backing `loadedFile`, when opened from the library
+   * (D24). Lets the reader PATCH reading progress back to the server. `null`
+   * for dev-sample loads (which have no library row).
+   */
+  loadedBookId: string | null;
+  /**
+   * Coarse reading progress, 0..1, reported by whichever reader is mounted
+   * (PDF = page/total; EPUB = locations percentage). Consumed by the library
+   * progress-sync hook to PATCH the server (D24). `null` before it's known.
+   */
+  progressFraction: number | null;
 
   /**
    * PDF-only zoom scale (1 = 100%). Fixed-layout PDFs zoom instead of reflow;
@@ -66,8 +84,14 @@ export interface ReaderState {
   acquireChromeHold: () => void;
   releaseChromeHold: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
-  /** Stash the picked/forked file + its detected format for `/read` to pick up. */
+  /** Toggle the docked contents sidebar (persisted). */
+  toggleTocSidebar: () => void;
+  /** Stash the picked file + its detected format for `/read` to pick up. */
   setLoadedFile: (file: File | null, format: Format | null) => void;
+  /** Like `setLoadedFile`, but also records the library book id (D24). */
+  setLoadedBook: (file: File, format: Format, bookId: string) => void;
+  /** Report coarse reading progress (0..1) from the active reader. */
+  setProgressFraction: (fraction: number | null) => void;
   /** Set the PDF zoom scale (brief 06). Clamped by the caller. */
   setZoom: (zoom: number) => void;
   reset: () => void;
@@ -80,6 +104,27 @@ const DEFAULT_FONT_SETTINGS: FontSettings = {
   margins: 24,
 };
 
+// The contents-sidebar preference is the one bit of durable UI state (the user
+// asked for it to be remembered). Persist just this boolean — reading position
+// stays session-only (D9). Guarded so SSR/no-storage environments no-op.
+const TOC_SIDEBAR_KEY = "ebook-reader:toc-sidebar-open";
+
+function readTocSidebarPref(): boolean {
+  try {
+    return localStorage.getItem(TOC_SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeTocSidebarPref(open: boolean) {
+  try {
+    localStorage.setItem(TOC_SIDEBAR_KEY, open ? "1" : "0");
+  } catch {
+    /* preference persistence is best-effort */
+  }
+}
+
 const initialState = {
   theme: "light" as Theme,
   fontSettings: DEFAULT_FONT_SETTINGS,
@@ -87,8 +132,11 @@ const initialState = {
   chromeVisible: true,
   chromeHoldCount: 0,
   layoutMode: "paginated" as LayoutMode,
+  tocSidebarOpen: readTocSidebarPref(),
   loadedFile: null as File | null,
   loadedFormat: null as Format | null,
+  loadedBookId: null as string | null,
+  progressFraction: null as number | null,
   zoom: 1,
 };
 
@@ -111,7 +159,17 @@ export const useReaderStore = create<ReaderState>((set) => ({
   releaseChromeHold: () =>
     set((state) => ({ chromeHoldCount: Math.max(0, state.chromeHoldCount - 1) })),
   setLayoutMode: (layoutMode) => set({ layoutMode }),
-  setLoadedFile: (loadedFile, loadedFormat) => set({ loadedFile, loadedFormat }),
+  toggleTocSidebar: () =>
+    set((state) => {
+      const tocSidebarOpen = !state.tocSidebarOpen;
+      writeTocSidebarPref(tocSidebarOpen);
+      return { tocSidebarOpen };
+    }),
+  setLoadedFile: (loadedFile, loadedFormat) =>
+    set({ loadedFile, loadedFormat, loadedBookId: null }),
+  setLoadedBook: (loadedFile, loadedFormat, loadedBookId) =>
+    set({ loadedFile, loadedFormat, loadedBookId, progressFraction: null }),
+  setProgressFraction: (progressFraction) => set({ progressFraction }),
   setZoom: (zoom) => set({ zoom }),
   reset: () => set(initialState),
 }));

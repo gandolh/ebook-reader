@@ -15,11 +15,14 @@ import { ToolbarButton } from "../chrome";
 export function EpubControls({
   onOpenToc,
   hasToc,
+  tocActive = false,
   onOpenSearch,
   settingsTrigger,
 }: {
   onOpenToc: () => void;
   hasToc: boolean;
+  /** Whether the contents sidebar is currently docked open (button reads as pressed). */
+  tocActive?: boolean;
   onOpenSearch: () => void;
   /** The settings popover trigger (font/family/spacing/margins + theme). */
   settingsTrigger: ReactNode;
@@ -27,7 +30,11 @@ export function EpubControls({
   return (
     <div className="flex items-center gap-1">
       {hasToc && (
-        <ToolbarButton label="Table of contents" onClick={onOpenToc}>
+        <ToolbarButton
+          label={tocActive ? "Hide contents" : "Show contents"}
+          onClick={onOpenToc}
+          active={tocActive}
+        >
           <TocIcon />
         </ToolbarButton>
       )}

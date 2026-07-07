@@ -50,7 +50,7 @@ export function ReaderToolbar({
     // events — the progress rail lives underneath it (z-20). Only the pill
     // itself is interactive, and only while the chrome is visible.
     <div
-      className={`pointer-events-none fixed inset-x-0 bottom-0 z-30 transition-all duration-300 ${
+      className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 transition-all duration-300 ${
         chromeVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
       }`}
       onMouseEnter={() => setPointerOver(true)}

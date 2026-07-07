@@ -1,18 +1,26 @@
 @import "tailwindcss";
 
 /*
- * Reader theme tokens (light/sepia/dark) as CSS variables (wiki/reader.md).
- * The chrome + renderers (briefs 06/07) read these via `data-theme` on a
- * root element; Zustand's `theme` field drives which one is active. Only
- * the tokens are defined here — no reader UI in this brief.
+ * ── "Quiet Paper" design system (corpus/wiki/design.md — enforced, D27) ──────
+ *
+ * Two token layers, intentionally distinct:
+ *
+ * 1. --reader-* : the three READING THEMES (light/sepia/dark) applied to the
+ *    PDF/EPUB reading surface + chrome via `data-theme`. Zustand's `theme`
+ *    field drives which is active. Load-bearing; predates the design system.
+ *    (Light bg/accent retuned to the Quiet Paper paper + faded-ink accent.)
+ *
+ * 2. --color-* Quiet Paper palette : the LIBRARY + chrome design tokens
+ *    (paper surfaces, ink text, faded-ink primary). Theme-independent; used by
+ *    the library home. Exposed to Tailwind via `@theme inline` below.
  */
 :root,
 [data-theme="light"] {
-  --reader-bg: #ffffff;
-  --reader-fg: #1a1a1a;
-  --reader-surface: #f5f5f5;
+  --reader-bg: #fcf9f8; /* Quiet Paper "paper" (was #ffffff) */
+  --reader-fg: #1c1b1b;
+  --reader-surface: #f6f3f2;
   --reader-border: #e2e2e2;
-  --reader-accent: #2563eb;
+  --reader-accent: #30568b; /* faded ink-blue (was #2563eb) */
 }
 
 [data-theme="sepia"] {
@@ -31,17 +39,106 @@
   --reader-accent: #60a5fa;
 }
 
+/* Quiet Paper palette (library + chrome). See design.md "Colors". */
+:root {
+  --paper: #fcf9f8;
+  --paper-raised: #ffffff;
+  --paper-low: #f6f3f2;
+  --paper-container: #f0eded;
+  --paper-container-high: #eae7e7;
+  --ink: #1c1b1b;
+  --ink-variant: #43474f;
+  --line: #737780;
+  --line-soft: #c3c6d1;
+  --accent: #30568b;
+  --accent-soft: #4a6fa5;
+  --on-accent: #ffffff;
+  --ink-fill: #313030; /* solid "Ink" button */
+  --on-ink-fill: #f3f0ef;
+  --danger: #ba1a1a;
+  --danger-soft: #ffdad6;
+}
+
+/*
+ * Quiet Paper's canonical look is the light theme (above). Sepia + dark are
+ * *variants* (design.md "Colors" — Variants): remap the paper/ink/accent tokens
+ * onto the corresponding reading-theme palette so the library themes with the
+ * reader (the header toggle drives `data-theme`). Structural tokens (radii,
+ * fonts, danger) stay constant.
+ */
+[data-theme="sepia"] {
+  --paper: #f4ecd8;
+  --paper-raised: #faf4e6;
+  --paper-low: #efe6d0;
+  --paper-container: #ece0c8;
+  --paper-container-high: #e2d3b3;
+  --ink: #3b2f1e;
+  --ink-variant: #6b5b42;
+  --line: #a68a5b;
+  --line-soft: #d9c9a3;
+  --accent: #92400e;
+  --accent-soft: #b45c1e;
+  --on-accent: #fff8ee;
+  --ink-fill: #3b2f1e;
+  --on-ink-fill: #f4ecd8;
+}
+
+[data-theme="dark"] {
+  --paper: #181818;
+  --paper-raised: #202020;
+  --paper-low: #1f1f1f;
+  --paper-container: #262626;
+  --paper-container-high: #303030;
+  --ink: #e8e8e8;
+  --ink-variant: #a8a8a8;
+  --line: #4a4a4a;
+  --line-soft: #3a3a3a;
+  --accent: #60a5fa;
+  --accent-soft: #7cb3fb;
+  --on-accent: #0b1a2e;
+  --ink-fill: #e8e8e8;
+  --on-ink-fill: #181818;
+}
+
 @theme inline {
+  /* Reading-theme tokens */
   --color-reader-bg: var(--reader-bg);
   --color-reader-fg: var(--reader-fg);
   --color-reader-surface: var(--reader-surface);
   --color-reader-border: var(--reader-border);
   --color-reader-accent: var(--reader-accent);
+
+  /* Quiet Paper tokens */
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-low: var(--paper-low);
+  --color-paper-container: var(--paper-container);
+  --color-paper-container-high: var(--paper-container-high);
+  --color-ink: var(--ink);
+  --color-ink-variant: var(--ink-variant);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-ink-fill: var(--ink-fill);
+  --color-on-ink-fill: var(--on-ink-fill);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  /* Type roles (design.md "Typography"). Families self-hosted in main.tsx. */
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-reading: "Source Serif 4", Georgia, serif;
+  --font-ui: "Inter", system-ui, sans-serif;
+
+  /* Book covers are 2px radius (design.md "Shapes"). */
+  --radius-cover: 2px;
 }
 
 body {
   margin: 0;
   background-color: var(--reader-bg);
   color: var(--reader-fg);
-  font-family: system-ui, sans-serif;
+  /* UI defaults to Inter; the reading pane opts into Source Serif 4. */
+  font-family: var(--font-ui);
 }

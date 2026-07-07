@@ -9,6 +9,7 @@ export { HomeButton } from "./HomeButton";
 export { PageNav } from "./PageNav";
 export { ProgressIndicator } from "./ProgressIndicator";
 export { TocDrawer, type TocEntry } from "./TocDrawer";
+export { TocSidebar } from "./TocSidebar";
 export { SettingsPopover } from "./SettingsPopover";
 export { SearchPanel } from "./SearchPanel";
 export { SliderControl } from "./SliderControl";

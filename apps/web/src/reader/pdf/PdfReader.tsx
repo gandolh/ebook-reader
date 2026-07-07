@@ -83,6 +83,13 @@ export function PdfReader({ file }: { file: File }) {
     setCurrentLocation(1);
   }, [file, setCurrentLocation]);
 
+  // Report coarse progress (page / total) for the library sync hook (D24).
+  useEffect(() => {
+    if (numPages && numPages > 0) {
+      useReaderStore.getState().setProgressFraction(Math.min(currentPage / numPages, 1));
+    }
+  }, [currentPage, numPages]);
+
   // Track available width so fit-width can size the page to the viewport.
   useEffect(() => {
     const el = containerRef.current;

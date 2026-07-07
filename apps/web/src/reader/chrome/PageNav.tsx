@@ -2,8 +2,9 @@ import { useReaderStore } from "../../store/reader-store";
 
 /**
  * Shared on-screen page navigation (wiki/reader.md "Page nav"). Renders:
- * - left/right **click-zones** covering the outer thirds of the viewport, so a
- *   tap/click on the page edge flips the page (Kindle feel);
+ * - left/right **click-zones** covering the outer thirds of the reading pane
+ *   (the positioned reader root), so a tap/click on the page edge flips the
+ *   page (Kindle feel);
  * - explicit prev/next **arrow buttons** that fade with the chrome.
  *
  * Keyboard arrows are handled separately by `usePageNavKeys` (they're global,
@@ -35,7 +36,7 @@ export function PageNav({
         aria-label="Previous page"
         onClick={onPrev}
         disabled={!canPrev}
-        className="fixed inset-y-0 left-0 z-10 w-1/3 cursor-w-resize bg-transparent disabled:cursor-default"
+        className="absolute inset-y-0 left-0 z-10 w-1/3 cursor-w-resize bg-transparent disabled:cursor-default"
         tabIndex={-1}
       />
       <button
@@ -43,13 +44,13 @@ export function PageNav({
         aria-label="Next page"
         onClick={onNext}
         disabled={!canNext}
-        className="fixed inset-y-0 right-0 z-10 w-1/3 cursor-e-resize bg-transparent disabled:cursor-default"
+        className="absolute inset-y-0 right-0 z-10 w-1/3 cursor-e-resize bg-transparent disabled:cursor-default"
         tabIndex={-1}
       />
 
       {/* Explicit arrows — fade with the chrome. */}
       <div
-        className={`pointer-events-none fixed inset-y-0 left-0 z-20 flex items-center pl-2 transition-opacity duration-300 ${
+        className={`pointer-events-none absolute inset-y-0 left-0 z-20 flex items-center pl-2 transition-opacity duration-300 ${
           chromeVisible ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -64,7 +65,7 @@ export function PageNav({
         </button>
       </div>
       <div
-        className={`pointer-events-none fixed inset-y-0 right-0 z-20 flex items-center pr-2 transition-opacity duration-300 ${
+        className={`pointer-events-none absolute inset-y-0 right-0 z-20 flex items-center pr-2 transition-opacity duration-300 ${
           chromeVisible ? "opacity-100" : "opacity-0"
         }`}
       >

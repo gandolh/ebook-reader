@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { ReactReader, ReactReaderStyle, type IReactReaderStyle } from "react-reader";
 import { EpubCFI, type Book, type NavItem, type Rendition } from "epubjs";
 
 import { useReaderStore } from "../../store/reader-store";
-import {
-  ConvertApiError,
-  convertEpubToPdf,
-  downloadBlob,
-  pdfFilenameFor,
-} from "../../lib/convert-api";
+// EPUB→PDF conversion is hidden for now (see the toolbar). Restore alongside
+// the "Download as PDF" button:
+// import { useMutation } from "@tanstack/react-query";
+// import {
+//   ConvertApiError,
+//   convertEpubToPdf,
+//   downloadBlob,
+//   pdfFilenameFor,
+// } from "../../lib/convert-api";
 import {
   HomeButton,
   PageNav,
@@ -17,7 +19,7 @@ import {
   SearchPanel,
   SettingsPopover,
   ToolbarButton,
-  TocDrawer,
+  TocSidebar,
   type SearchMatch,
   type TocEntry,
   useApplyTheme,
@@ -59,6 +61,8 @@ export function EpubReader({ file }: { file: File }) {
   const setCurrentLocation = useReaderStore((s) => s.setCurrentLocation);
   const currentLocation = useReaderStore((s) => s.currentLocation);
   const chromeVisible = useReaderStore((s) => s.chromeVisible);
+  const tocSidebarOpen = useReaderStore((s) => s.tocSidebarOpen);
+  const toggleTocSidebar = useReaderStore((s) => s.toggleTocSidebar);
 
   // epub.js reads from an ArrayBuffer (in-memory file → no network, no object
   // URL to revoke). react-reader accepts `string | ArrayBuffer` for `url`.
@@ -66,11 +70,17 @@ export function EpubReader({ file }: { file: File }) {
   const [rendition, setRendition] = useState<Rendition | null>(null);
   const bookRef = useRef<Book | null>(null);
   const [toc, setToc] = useState<NavItem[]>([]);
-  const [tocOpen, setTocOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [percent, setPercent] = useState<number | null>(null);
-  // "Page" here = epub.js location index (fixed ~1000-char chunks), the only
-  // stable page-like unit a reflowable book has. Shown as `page/totalPages`.
+  // Book-wide "Page N / total". A reflowable EPUB has no fixed page count, so we
+  // use epub.js's generated locations (fixed ~1000-char chunks) as the page
+  // unit: `page` = current location index + 1, `totalPages` = the location
+  // count. Unlike the per-section `displayed.page`, the location index is
+  // monotonic across the WHOLE book — it never resets when crossing a spine
+  // boundary (the per-chapter counter did: e.g. 12/13 → 1/7 mid-read). It can
+  // occasionally step by 2 or repeat on image-only pages, an accepted tradeoff
+  // for a single, never-resetting position. Both are null until locations
+  // finish generating (a brief moment after open), during which we show %.
   const [page, setPage] = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [bookTitle, setBookTitle] = useState<string | null>(null);
@@ -135,11 +145,12 @@ export function EpubReader({ file }: { file: File }) {
     };
   }, [file, setCurrentLocation]);
 
-  // Pull percentage + location index (page) from the rendition's current
-  // position. Location index is only meaningful once locations are generated —
-  // and right at generation time `currentLocation()` may not carry it yet
-  // (locations can finish before the first render settles), so fall back to
-  // resolving the CFI against the locations list directly.
+  // Pull overall percentage (for the rail) + the book-wide location index
+  // (the page number) from the rendition's current position. The index is only
+  // meaningful once locations are generated — and right at generation time
+  // `currentLocation()` may not carry it yet (locations can finish before the
+  // first render settles), so fall back to resolving the CFI against the
+  // locations list directly.
   const refreshProgress = useCallback((r: Rendition) => {
     try {
       const current = r.currentLocation() as unknown as {
@@ -147,7 +158,11 @@ export function EpubReader({ file }: { file: File }) {
       };
       const start = current?.start;
       const p = start?.percentage;
-      if (typeof p === "number" && p >= 0) setPercent(Math.round(p * 100));
+      if (typeof p === "number" && p >= 0) {
+        setPercent(Math.round(p * 100));
+        // Report coarse progress for the library sync hook (D24).
+        useReaderStore.getState().setProgressFraction(Math.min(Math.max(p, 0), 1));
+      }
 
       const locations = r.book.locations as unknown as {
         length(): number;
@@ -305,7 +320,8 @@ export function EpubReader({ file }: { file: File }) {
         const resolved = resolveSpineHref(rendition.book, entry.target);
         if (resolved) jumpTo(resolved);
       }
-      setTocOpen(false);
+      // The docked sidebar stays open after a jump (unlike the old overlay
+      // drawer) — navigating within contents shouldn't dismiss it.
     },
     [rendition, jumpTo],
   );
@@ -388,48 +404,44 @@ export function EpubReader({ file }: { file: File }) {
     [rendition, jumpTo],
   );
 
-  const openTocFromFooter = useCallback(() => setTocOpen(true), []);
-
-  // Footer badge text. Once the location count exists, ALWAYS show pages —
-  // derive from percent if the exact index hasn't been read yet — so the badge
-  // never sits on "0%" waiting for an interaction. Percent only appears for
-  // the brief window while locations are still generating.
-  const displayedPage =
-    totalPages != null
-      ? Math.min(
-          totalPages,
-          page ?? Math.max(1, Math.round(((percent ?? 0) / 100) * totalPages)),
-        )
+  // Footer badge: book-wide "Page N/total" (location index, clamped into range)
+  // alongside the overall percentage. Both appear once locations finish
+  // generating; until then only the percentage shows (or nothing at all right
+  // at open).
+  const pageBadge =
+    page != null && totalPages != null
+      ? `Page ${Math.min(page, totalPages)}/${totalPages}`
       : null;
-  const progressBadge =
-    displayedPage != null ? `${displayedPage}/${totalPages}` : `${percent ?? 0}%`;
+  const percentBadge = percent != null ? `${percent}%` : null;
 
   // Secondary action: export this EPUB as a PDF (server round-trip through
-  // Calibre). The main flow is reading — this is one toolbar button, never a
-  // screen of its own (D1: conversion is an export utility).
-  const [convertError, setConvertError] = useState<string | null>(null);
-  const convertMutation = useMutation({
-    mutationFn: (f: File) => convertEpubToPdf(f),
-  });
-  const converting = convertMutation.isPending;
-  const onDownloadPdf = useCallback(() => {
-    if (converting) return;
-    setConvertError(null);
-    convertMutation.mutate(file, {
-      onSuccess: (blob) => downloadBlob(blob, pdfFilenameFor(file.name)),
-      onError: (err) =>
-        setConvertError(
-          err instanceof ConvertApiError ? err.message : "Conversion failed.",
-        ),
-    });
-  }, [file, converting, convertMutation]);
-
-  // Error notice is transient — dismiss on its own after a beat.
-  useEffect(() => {
-    if (!convertError) return;
-    const id = setTimeout(() => setConvertError(null), 6000);
-    return () => clearTimeout(id);
-  }, [convertError]);
+  // Calibre). Hidden for now — reading is the whole product (see the toolbar
+  // below). The conversion machinery is kept, commented out, so restoring the
+  // "Download as PDF" button is a single revert:
+  //
+  // const [convertError, setConvertError] = useState<string | null>(null);
+  // const convertMutation = useMutation({
+  //   mutationFn: (f: File) => convertEpubToPdf(f),
+  // });
+  // const converting = convertMutation.isPending;
+  // const onDownloadPdf = useCallback(() => {
+  //   if (converting) return;
+  //   setConvertError(null);
+  //   convertMutation.mutate(file, {
+  //     onSuccess: (blob) => downloadBlob(blob, pdfFilenameFor(file.name)),
+  //     onError: (err) =>
+  //       setConvertError(
+  //         err instanceof ConvertApiError ? err.message : "Conversion failed.",
+  //       ),
+  //   });
+  // }, [file, converting, convertMutation]);
+  //
+  // // Error notice is transient — dismiss on its own after a beat.
+  // useEffect(() => {
+  //   if (!convertError) return;
+  //   const id = setTimeout(() => setConvertError(null), 6000);
+  //   return () => clearTimeout(id);
+  // }, [convertError]);
 
   // react-reader's own arrows + TOC toggle are hidden — we use the shared
   // chrome for those. Keep the reader area transparent so the themed page
@@ -462,20 +474,34 @@ export function EpubReader({ file }: { file: File }) {
   }
 
   return (
-    <div className="fixed inset-0 top-0 flex flex-col bg-reader-bg">
-      {/* Running header — orientation at the edge, fades with the chrome. The
-          column below reserves this space (pt), so text is never covered. */}
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none fixed inset-x-0 top-0 z-20 flex items-baseline justify-between gap-6 px-6 py-2.5 text-xs text-reader-fg/50 transition-opacity duration-300 ${
-          chromeVisible ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        <span className="min-w-0 truncate">{bookTitle ?? ""}</span>
-        <span className="min-w-0 truncate text-right">{chapterLabel ?? ""}</span>
-      </div>
+    // Row layout: the docked contents sidebar sits in-flow on the left and the
+    // reading pane fills the rest, so opening the sidebar shifts (not covers)
+    // the text. The pane is the positioning context for the chrome overlays
+    // (header/nav/rail/toolbar are `absolute` within it), which keeps them
+    // clear of the sidebar without any transform on the epub iframe's ancestor.
+    <div className="fixed inset-0 top-0 flex bg-reader-bg">
+      <TocSidebar
+        open={tocSidebarOpen}
+        entries={tocEntries}
+        onNavigate={onNavigateToc}
+        onClose={toggleTocSidebar}
+        currentId={currentTocId}
+      />
 
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Running header — orientation at the edge, fades with the chrome. The
+            column below reserves this space (pt), so text is never covered. */}
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-baseline justify-between gap-6 px-6 py-2.5 text-xs text-reader-fg/50 transition-opacity duration-300 ${
+            chromeVisible ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <span className="min-w-0 truncate">{bookTitle ?? ""}</span>
+          <span className="min-w-0 truncate text-right">{chapterLabel ?? ""}</span>
+        </div>
+
+        <div className="relative flex-1 overflow-hidden">
         {/* One centered, measure-capped column — the page is the interface.
             `relative` is load-bearing: react-reader positions its reader area
             absolutely, and it must anchor to THIS capped box, not the
@@ -515,136 +541,128 @@ export function EpubReader({ file }: { file: File }) {
         </div>
       </div>
 
-      <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext />
+        <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext />
 
-      <ProgressRail
-        percent={percent ?? 0}
-        totalPages={totalPages}
-        ticks={railTicks}
-        visible={chromeVisible}
-        onSeek={onSeek}
-      />
-
-      <TocDrawer
-        open={tocOpen}
-        onOpenChange={setTocOpen}
-        entries={tocEntries}
-        onNavigate={onNavigateToc}
-        currentId={currentTocId}
-      />
-
-      {searchProvider && (
-        <SearchPanel
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          provider={searchProvider}
-          onJump={onJumpToMatch}
+        <ProgressRail
+          percent={percent ?? 0}
+          totalPages={totalPages}
+          ticks={railTicks}
+          visible={chromeVisible}
+          onSeek={onSeek}
         />
-      )}
 
-      {convertError && (
-        <div
-          role="alert"
-          className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-800 shadow-md"
-        >
-          {convertError}
-        </div>
-      )}
-
-      <ReaderToolbar
-        leftControls={
-          <>
-            <HomeButton />
-            <ToolbarButton
-              label={converting ? "Converting to PDF…" : "Download as PDF"}
-              onClick={onDownloadPdf}
-              disabled={converting}
-            >
-              {converting ? <SpinnerIcon /> : <DownloadIcon />}
-            </ToolbarButton>
-          </>
-        }
-        // The `formatControls` slot IS the format-adaptive seam — EPUB fills it
-        // with TOC + search + the font/theme settings trigger (PDF fills it with
-        // zoom/invert). Same shell, different slot contents.
-        formatControls={
-          <EpubControls
-            hasToc={hasToc}
-            onOpenToc={() => setTocOpen(true)}
-            onOpenSearch={() => setSearchOpen(true)}
-            settingsTrigger={
-              <SettingsPopover
-                title="Reader settings"
-                trigger={
-                  <ToolbarButton label="Reader settings">
-                    <span className="text-sm font-semibold leading-none tracking-tight">
-                      Aa
-                    </span>
-                  </ToolbarButton>
-                }
-              >
-                <EpubSettings />
-              </SettingsPopover>
-            }
+        {searchProvider && (
+          <SearchPanel
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            provider={searchProvider}
+            onJump={onJumpToMatch}
           />
-        }
-        rightControls={
-          <button
-            type="button"
-            onClick={openTocFromFooter}
-            title="Open table of contents"
-            aria-label="Open table of contents"
-            className="flex max-w-56 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-reader-fg/80 transition hover:bg-reader-bg"
+        )}
+
+        {/* Conversion error banner — hidden along with the "Download as PDF"
+            button (restore together):
+        {convertError && (
+          <div
+            role="alert"
+            className="absolute bottom-20 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-800 shadow-md"
           >
-            {chapterLabel && (
-              <span className="min-w-0 truncate text-xs text-reader-fg/70">
-                {chapterLabel}
-              </span>
-            )}
-            <span className="shrink-0 rounded bg-reader-surface px-1.5 py-0.5 text-xs tabular-nums text-reader-fg/70">
-              {progressBadge}
-            </span>
-          </button>
-        }
-      />
+            {convertError}
+          </div>
+        )} */}
+
+        <ReaderToolbar
+          // The "Download as PDF" export is hidden for now — reading is the
+          // whole product. The conversion code (convertMutation, onDownloadPdf,
+          // DownloadIcon) is kept so the button can be restored in one edit.
+          leftControls={<HomeButton />}
+          // The `formatControls` slot IS the format-adaptive seam — EPUB fills it
+          // with TOC + search + the font/theme settings trigger (PDF fills it with
+          // zoom/invert). Same shell, different slot contents.
+          formatControls={
+            <EpubControls
+              hasToc={hasToc}
+              onOpenToc={toggleTocSidebar}
+              tocActive={tocSidebarOpen}
+              onOpenSearch={() => setSearchOpen(true)}
+              settingsTrigger={
+                <SettingsPopover
+                  title="Reader settings"
+                  trigger={
+                    <ToolbarButton label="Reader settings">
+                      <span className="text-sm font-semibold leading-none tracking-tight">
+                        Aa
+                      </span>
+                    </ToolbarButton>
+                  }
+                >
+                  <EpubSettings />
+                </SettingsPopover>
+              }
+            />
+          }
+          rightControls={
+            <button
+              type="button"
+              onClick={toggleTocSidebar}
+              title={tocSidebarOpen ? "Hide contents" : "Show contents"}
+              aria-label={tocSidebarOpen ? "Hide contents" : "Show contents"}
+              aria-pressed={tocSidebarOpen}
+              className="flex max-w-64 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-reader-fg/80 transition hover:bg-reader-bg"
+            >
+              {chapterLabel && (
+                <span className="min-w-0 truncate text-xs text-reader-fg/70">
+                  {chapterLabel}
+                </span>
+              )}
+              {(pageBadge || percentBadge) && (
+                <span className="shrink-0 rounded bg-reader-surface px-1.5 py-0.5 text-xs tabular-nums text-reader-fg/70">
+                  {[pageBadge, percentBadge].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </button>
+          }
+        />
+      </div>
     </div>
   );
 }
 
-function DownloadIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M4.5 19.5h15"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SpinnerIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-      className="motion-safe:animate-spin"
-    >
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.75" opacity="0.25" />
-      <path
-        d="M21 12a9 9 0 00-9-9"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+// Icons for the hidden "Download as PDF" toolbar button — restore with it:
+// function DownloadIcon() {
+//   return (
+//     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+//       <path
+//         d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M4.5 19.5h15"
+//         stroke="currentColor"
+//         strokeWidth="1.75"
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//       />
+//     </svg>
+//   );
+// }
+//
+// function SpinnerIcon() {
+//   return (
+//     <svg
+//       width="18"
+//       height="18"
+//       viewBox="0 0 24 24"
+//       fill="none"
+//       aria-hidden="true"
+//       className="motion-safe:animate-spin"
+//     >
+//       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.75" opacity="0.25" />
+//       <path
+//         d="M21 12a9 9 0 00-9-9"
+//         stroke="currentColor"
+//         strokeWidth="1.75"
+//         strokeLinecap="round"
+//       />
+//     </svg>
+//   );
+// }
 
 /** Loading = a page taking shape: faint prose-line bars in the same measure-
  * capped column the text will land in (no spinner, no "Loading…" string). */

@@ -3,6 +3,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { useReaderStore } from "../store/reader-store";
 import { PdfReader } from "../reader/pdf";
 import { EpubReader } from "../reader/epub";
+import { useProgressSync } from "../lib/use-progress-sync";
 import { useDevSampleFile } from "../reader/pdf/dev/use-dev-sample-file";
 import { useDevSampleEpub } from "../reader/epub/dev/use-dev-sample-epub";
 
@@ -10,9 +11,11 @@ const routeApi = getRouteApi("/read");
 
 /**
  * `/read` — the reader view. Reads the in-memory `File` handed over by the
- * uploader (brief 05, Zustand `loadedFile`) and mounts the matching renderer
- * behind the shared chrome. No persistence (D3): on a direct visit with no
- * loaded file we show a "go home" state so `/read` is still testable.
+ * library (Zustand `loadedFile`, set when a cover card is opened) and mounts
+ * the matching renderer behind the shared chrome. The `File` lives only in
+ * memory, so a direct visit / refresh with nothing loaded shows a "go to
+ * library" state (the book itself is persisted server-side per D24 — reopen it
+ * from the library home).
  *
  * Format routing: this brief (06) implements PDF. EPUB lands in brief 07, which
  * mounts its renderer here and REUSES the shared chrome (apps/web/src/reader/
@@ -23,6 +26,10 @@ export function Read() {
   const { format, dev } = routeApi.useSearch();
   const loadedFile = useReaderStore((s) => s.loadedFile);
   const loadedFormat = useReaderStore((s) => s.loadedFormat);
+
+  // Persist coarse reading progress back to the library when the book came
+  // from it (D24). No-op for dev samples / direct visits.
+  useProgressSync();
 
   // Dev-only, opt-in (`?dev=1`) sample files so `/read` is testable without the
   // uploader. Both return null in production and when not enabled. The `format`
@@ -57,16 +64,17 @@ export function Read() {
 function NoFileState({ format }: { format: string | null }) {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-12">
-      <h1 className="text-2xl font-semibold">No file loaded</h1>
+      <h1 className="font-display text-2xl font-semibold">No book open</h1>
       <p className="text-reader-fg/70">
-        Nothing to read yet. Files live only in memory (no persistence — D3), so a
-        direct visit or refresh has nothing to show{format ? ` for “${format}”` : ""}.
+        Nothing to read yet. The open file lives only in memory, so a direct visit
+        or refresh has nothing to show{format ? ` for “${format}”` : ""}. Your books
+        are saved though — reopen one from your library.
       </p>
       <Link
         to="/"
         className="w-fit rounded-md border border-reader-border bg-reader-surface px-4 py-2 text-sm font-medium"
       >
-        Go to home to pick a file
+        Go to your library
       </Link>
     </main>
   );
