@@ -8,6 +8,7 @@ export { ReaderToolbar, ToolbarButton } from "./ReaderToolbar";
 export { HomeButton } from "./HomeButton";
 export { PageNav } from "./PageNav";
 export { ProgressIndicator } from "./ProgressIndicator";
+export { ProgressRail, type RailTick } from "./ProgressRail";
 export { TocDrawer, type TocEntry } from "./TocDrawer";
 export { TocSidebar } from "./TocSidebar";
 export { SettingsPopover } from "./SettingsPopover";

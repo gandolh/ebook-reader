@@ -15,11 +15,13 @@ import { useReaderStore } from "../../store/reader-store";
 import {
   HomeButton,
   PageNav,
+  ProgressRail,
   ReaderToolbar,
   SearchPanel,
   SettingsPopover,
   ToolbarButton,
   TocSidebar,
+  type RailTick,
   type SearchMatch,
   type TocEntry,
   useApplyTheme,
@@ -28,7 +30,6 @@ import {
 } from "../chrome";
 import { EpubControls } from "./EpubControls";
 import { EpubSettings } from "./EpubSettings";
-import { ProgressRail, type RailTick } from "./ProgressRail";
 import { useEpubToc } from "./use-epub-toc";
 import { useEpubTheme } from "./use-epub-theme";
 import { createEpubSearchProvider } from "./epub-search";

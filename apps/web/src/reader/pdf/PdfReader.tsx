@@ -16,12 +16,14 @@ import {
   HomeButton,
   PageNav,
   ProgressIndicator,
+  ProgressRail,
   ReaderToolbar,
   SearchPanel,
   SettingsPopover,
   ThemePicker,
   ToolbarButton,
   TocDrawer,
+  type RailTick,
   type SearchMatch,
   type TocEntry,
   useApplyTheme,
@@ -59,6 +61,7 @@ export function PdfReader({ file }: { file: File }) {
   const setZoom = useReaderStore((s) => s.setZoom);
   const theme = useReaderStore((s) => s.theme);
   const setTheme = useReaderStore((s) => s.setTheme);
+  const chromeVisible = useReaderStore((s) => s.chromeVisible);
 
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
@@ -112,6 +115,18 @@ export function PdfReader({ file }: { file: File }) {
   const tocEntries = usePdfOutline(pdfDoc);
   const hasToc = tocEntries.length > 0;
 
+  // Chapter ticks for the scrub rail (brief 08): top-level outline entries that
+  // resolved to a page. Empty (tickless rail) when the PDF has no outline.
+  const railTicks = useMemo<RailTick[]>(() => {
+    if (!numPages) return [];
+    return tocEntries
+      .filter((e) => e.depth === 0 && typeof e.target === "number")
+      .map((e) => ({
+        pct: (((e.target as number) - 1) / numPages) * 100,
+        label: e.label,
+      }));
+  }, [tocEntries, numPages]);
+
   const goToPage = useCallback(
     (page: number) => {
       if (numPages === null) return;
@@ -123,6 +138,16 @@ export function PdfReader({ file }: { file: File }) {
 
   const onPrev = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
   const onNext = useCallback(() => goToPage(currentPage + 1), [currentPage, goToPage]);
+
+  // Scrub-rail seek: 0–100 → 1-based page, matching the rail tooltip's own
+  // pct→page mapping so the release lands on the page it previewed.
+  const onSeekRail = useCallback(
+    (pct: number) => {
+      if (!numPages) return;
+      goToPage(Math.max(1, Math.round((pct / 100) * numPages)));
+    },
+    [numPages, goToPage],
+  );
 
   usePageNavKeys({ onPrev, onNext });
 
@@ -242,6 +267,16 @@ export function PdfReader({ file }: { file: File }) {
         canPrev={currentPage > 1}
         canNext={numPages !== null && currentPage < numPages}
       />
+
+      {numPages !== null && numPages > 0 && (
+        <ProgressRail
+          percent={(currentPage / numPages) * 100}
+          totalPages={numPages}
+          ticks={railTicks}
+          visible={chromeVisible}
+          onSeek={onSeekRail}
+        />
+      )}
 
       <TocDrawer
         open={tocOpen}
