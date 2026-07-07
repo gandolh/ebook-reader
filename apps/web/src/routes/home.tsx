@@ -45,7 +45,8 @@ export function Home() {
     try {
       const file = await fetchBookFile(book);
       setLoadedBook(file, book.format, book.id);
-      void navigate({ to: "/read", search: { format: book.format } });
+      // Encode the book id so a refresh on /read can re-fetch it.
+      void navigate({ to: "/read", search: { format: book.format, book: book.id } });
     } finally {
       setOpeningId(null);
     }

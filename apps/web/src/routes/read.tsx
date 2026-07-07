@@ -4,6 +4,7 @@ import { useReaderStore } from "../store/reader-store";
 import { PdfReader } from "../reader/pdf";
 import { EpubReader } from "../reader/epub";
 import { useProgressSync } from "../lib/use-progress-sync";
+import { useHydrateBook } from "../lib/use-hydrate-book";
 import { useDevSampleFile } from "../reader/pdf/dev/use-dev-sample-file";
 import { useDevSampleEpub } from "../reader/epub/dev/use-dev-sample-epub";
 
@@ -23,9 +24,13 @@ const routeApi = getRouteApi("/read");
  * comes from the store.
  */
 export function Read() {
-  const { format, dev } = routeApi.useSearch();
+  const { format, book, dev } = routeApi.useSearch();
   const loadedFile = useReaderStore((s) => s.loadedFile);
   const loadedFormat = useReaderStore((s) => s.loadedFormat);
+
+  // On a refresh / direct visit to `/read?book=<id>`, re-fetch the file from
+  // the library (the in-memory `File` is gone but the book is saved — D24).
+  const hydrateStatus = useHydrateBook(book);
 
   // Persist coarse reading progress back to the library when the book came
   // from it (D24). No-op for dev samples / direct visits.
@@ -46,7 +51,12 @@ export function Read() {
     loadedFormat ?? format ?? (devFile ? (devWantsEpub ? "epub" : "pdf") : null);
 
   if (!file) {
-    return <NoFileState format={effectiveFormat} />;
+    // Still pulling the book back from the library after a refresh — show a
+    // loading state rather than flashing the "no book" message.
+    if (hydrateStatus === "loading") {
+      return <HydratingState />;
+    }
+    return <NoFileState format={effectiveFormat} notFound={hydrateStatus === "not-found"} />;
   }
 
   if (effectiveFormat === "pdf") {
@@ -61,14 +71,14 @@ export function Read() {
   return <NoFileState format={effectiveFormat} />;
 }
 
-function NoFileState({ format }: { format: string | null }) {
+function NoFileState({ format, notFound }: { format: string | null; notFound?: boolean }) {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-12">
       <h1 className="font-display text-2xl font-semibold">No book open</h1>
       <p className="text-reader-fg/70">
-        Nothing to read yet. The open file lives only in memory, so a direct visit
-        or refresh has nothing to show{format ? ` for “${format}”` : ""}. Your books
-        are saved though — reopen one from your library.
+        {notFound
+          ? "That book isn't in your library anymore — it may have been removed."
+          : `Nothing to read yet. The open file lives only in memory, so a direct visit or refresh has nothing to show${format ? ` for “${format}”` : ""}. Your books are saved though — reopen one from your library.`}
       </p>
       <Link
         to="/"
@@ -76,6 +86,15 @@ function NoFileState({ format }: { format: string | null }) {
       >
         Go to your library
       </Link>
+    </main>
+  );
+}
+
+function HydratingState() {
+  return (
+    <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-12">
+      <h1 className="font-display text-2xl font-semibold">Opening your book…</h1>
+      <p className="text-reader-fg/70">Fetching it from your library.</p>
     </main>
   );
 }

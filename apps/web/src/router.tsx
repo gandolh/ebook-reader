@@ -26,6 +26,10 @@ const homeRoute = createRoute({
 // so `/read` can be deep-linked once brief 05 wires the uploader to it.
 const readSearchSchema = z.object({
   format: formatSchema.optional(),
+  // The library book id being read (D24). Encoded in the URL so a refresh /
+  // direct visit can re-fetch the file from the library instead of losing it
+  // (the `File` itself lives only in memory). Absent for dev-sample loads.
+  book: z.string().optional(),
   // Dev-only, opt-in flag: when `?dev=1` and running the dev server, `/read`
   // loads a bundled sample PDF so the reader is testable without the uploader
   // (brief 06). Gated by `import.meta.env.DEV` — no effect in production.
