@@ -57,3 +57,11 @@ export type {
   UpdateProgressRequest,
   LibrarySort,
 } from "./library-book.js";
+
+// --- Auth contract (brief 09) ----------------------------------------------
+export {
+  loginRequestSchema,
+  loginResponseSchema,
+  authStatusSchema,
+} from "./auth.js";
+export type { LoginRequest, LoginResponse, AuthStatus } from "./auth.js";

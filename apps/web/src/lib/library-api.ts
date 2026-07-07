@@ -4,7 +4,7 @@ import {
   type LibraryBook,
   type LibrarySort,
 } from "@ebook-reader/shared";
-import { apiFetch, API_BASE_URL } from "./api-client";
+import { apiFetch, API_BASE_URL, getAuthToken } from "./api-client";
 
 /**
  * Library API calls (decisions.md D24). Thin wrappers over the Fastify library
@@ -40,9 +40,18 @@ export async function updateProgress(id: string, progress: number): Promise<void
   });
 }
 
-/** Absolute URL for a book's cover thumbnail (served from disk, D25). */
+/**
+ * Absolute URL for a book's cover thumbnail (served from disk, D25). Cover
+ * `<img>` tags can't send an `Authorization` header, so when auth is enabled
+ * the token rides along as a query param instead (brief 09).
+ */
 export function coverUrl(id: string): string {
-  return new URL(`/library/${id}/cover`, API_BASE_URL).toString();
+  const url = new URL(`/library/${id}/cover`, API_BASE_URL);
+  const token = getAuthToken();
+  if (token) {
+    url.searchParams.set("token", token);
+  }
+  return url.toString();
 }
 
 /**

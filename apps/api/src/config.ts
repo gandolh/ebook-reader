@@ -16,6 +16,13 @@ function numberFromEnv(value: string | undefined, fallback: number): number {
 export const PORT = numberFromEnv(process.env.PORT, 3001);
 export const HOST = process.env.HOST ?? "0.0.0.0";
 
+/**
+ * Shared platform password (brief 09). When unset/blank the API is OPEN — the
+ * auth guard becomes a no-op. Trimmed so stray whitespace doesn't silently
+ * enable auth with a surprising password.
+ */
+export const APP_PASSWORD = process.env.APP_PASSWORD?.trim() || null;
+
 export const MAX_UPLOAD_MB = numberFromEnv(
   process.env.MAX_UPLOAD_MB,
   DEFAULT_MAX_UPLOAD_MB,
