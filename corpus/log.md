@@ -1,5 +1,39 @@
 # Log
 
+## [2026-07-07] done | Persistent library + "Quiet Paper" home implemented & verified
+
+Built the feature the decision entry below planned. Three commits: corpus, then
+backend, then frontend+integration.
+
+**Backend** (`apps/api`): `better-sqlite3` `books` table + on-disk storage
+(`library/<id>.<ext>`, `images/thumbnails/<id>.jpg`, all gitignored). Cover +
+metadata extraction (`extract.ts`): EPUB via OPF (EPUB3 cover-image / EPUB2
+meta[cover] / first-image fallback, + dc:title/dc:creator); PDF page-1 render
+via `pdf-to-img` (bundled pdfjs+canvas, no system deps) → `sharp` 400×600 JPEG.
+Routes: POST/GET/`:id/file`/`:id/cover`/PATCH `:id/progress`/DELETE. Shared Zod
+`libraryBook` contract. Deps pinned exact (D21).
+
+**Frontend** (`apps/web`): home rebuilt as the library per `wiki/design.md` —
+`LibraryHeader` (wordmark + theme toggle), `UploadZone`, `CoverCard` (2:3 cover,
+badge, 2px progress bar, typographic fallback, overflow→remove), sort, skeleton,
+empty state. `library-api` + React Query hooks; `use-progress-sync` debounced
+PATCH. Store gains `loadedBookId`/`progressFraction`. Fonts self-hosted via
+`@fontsource` (Playfair Display / Source Serif 4 / Inter — no CDN, D14). Quiet
+Paper tokens in `globals.css`, with sepia/dark remaps so the library themes with
+the reader.
+
+**Verified live** (Playwright + real arXiv PDF): upload→store+extract, gallery
+(real covers + fallback tiles), open→PDF renders, progress persists (page 4/21 →
+`progress=0.19`, blue bar on card), delete, sort, light+dark themes. **Bug
+found+fixed mid-run:** CORS preflight blocked PATCH (default methods allowlist
+omits it) → enumerated methods in `index.ts`. Dark-mode legibility fixed via
+theme-variant token remap. Typecheck ×3 + web build clean. See
+[test-plans/TP-01-home-upload.md](test-plans/TP-01-home-upload.md).
+
+Not exhaustively verified: sepia theme (spot-checked), EPUB open-to-read with a
+real cover-bearing book, refresh-persistence (books persist server-side by
+construction; not re-driven in-browser).
+
 ## [2026-07-07] decision | Persistent library + "Quiet Paper" design system (reverses D3/D4)
 
 New feature: the home page becomes a **persistent library**. Upload a PDF/EPUB →

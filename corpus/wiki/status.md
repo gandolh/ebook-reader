@@ -1,8 +1,11 @@
 # Status — 2026-07-07
 
-**Phase:** 🚧 **Building the persistent library + "Quiet Paper" design system**
-(reverses D3/D4; see D24–D27 and [design.md](design.md)). Corpus updated
-2026-07-07; backend + frontend implementation in progress.
+**Phase:** ✅ **Persistent library + "Quiet Paper" home shipped & verified**
+(2026-07-07; reverses D3/D4, see D24–D27 and [design.md](design.md)). SQLite +
+on-disk file/cover storage, server-side cover extraction, library CRUD, and the
+rebuilt cover-card home. Verified live (Playwright + real files); see the log +
+TP-01. Not exhaustively covered: sepia theme, EPUB open-to-read with a real
+cover.
 
 **Prior phase:** ✅ v1 verified + "quiet paper" redesign shipped (2026-07-02 pm).
 
