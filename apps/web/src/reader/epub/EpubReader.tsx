@@ -33,6 +33,7 @@ import { useEpubToc } from "./use-epub-toc";
 import { useEpubTheme } from "./use-epub-theme";
 import { createEpubSearchProvider } from "./epub-search";
 import { resolveSpineHref } from "./resolve-spine-href";
+import { buildPageMap, bookPageFromLocation, type EpubPageMap } from "./epub-page-map";
 
 /**
  * EPUB reader (brief 07 + "quiet paper" redesign). Wraps `react-reader`
@@ -63,6 +64,8 @@ export function EpubReader({ file }: { file: File }) {
   const chromeVisible = useReaderStore((s) => s.chromeVisible);
   const tocSidebarOpen = useReaderStore((s) => s.tocSidebarOpen);
   const toggleTocSidebar = useReaderStore((s) => s.toggleTocSidebar);
+  // Layout-affecting settings — a change invalidates the page map.
+  const fontSettings = useReaderStore((s) => s.fontSettings);
 
   // epub.js reads from an ArrayBuffer (in-memory file → no network, no object
   // URL to revoke). react-reader accepts `string | ArrayBuffer` for `url`.
@@ -72,17 +75,30 @@ export function EpubReader({ file }: { file: File }) {
   const [toc, setToc] = useState<NavItem[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [percent, setPercent] = useState<number | null>(null);
-  // Book-wide "Page N / total". A reflowable EPUB has no fixed page count, so we
-  // use epub.js's generated locations (fixed ~1000-char chunks) as the page
-  // unit: `page` = current location index + 1, `totalPages` = the location
-  // count. Unlike the per-section `displayed.page`, the location index is
-  // monotonic across the WHOLE book — it never resets when crossing a spine
-  // boundary (the per-chapter counter did: e.g. 12/13 → 1/7 mid-read). It can
-  // occasionally step by 2 or repeat on image-only pages, an accepted tradeoff
-  // for a single, never-resetting position. Both are null until locations
-  // finish generating (a brief moment after open), during which we show %.
-  const [page, setPage] = useState<number | null>(null);
-  const [totalPages, setTotalPages] = useState<number | null>(null);
+  // Book-wide "Page N / total" — accurate rendered pages (research option 3).
+  // We pre-paginate every spine item on THIS rendition (behind the loading
+  // veil) and build a prefix sum of per-chapter page counts (`pageMap`); the
+  // live page is `offset[section] + displayed.page`, which ticks by exactly 1
+  // per screen turn and never resets at chapter boundaries. Recomputed when the
+  // layout changes (font size/family/spacing/margins, viewport). Distinct from
+  // the char-based `locations` below, which still drive the % rail + seeking.
+  const [pageMap, setPageMap] = useState<EpubPageMap | null>(null);
+  const [bookPage, setBookPage] = useState<number | null>(null);
+  // "computing" = pre-paginating behind the loading veil (initial or recompute).
+  const [pageMapStatus, setPageMapStatus] =
+    useState<"idle" | "computing" | "ready" | "failed">("idle");
+  const [computeProgress, setComputeProgress] = useState<{ done: number; total: number }>({
+    done: 0,
+    total: 0,
+  });
+  // Bumped to force a page-map recompute (layout-affecting settings changed).
+  const [recomputeToken, setRecomputeToken] = useState(0);
+  // While true, the precompute walk is driving `display()` through every
+  // section — ignore its relocations so they don't churn store state or fight
+  // react-reader's controlled `location` prop.
+  const computingRef = useRef(false);
+  // Skip the debounced recompute on the very first settings render.
+  const settingsSettledRef = useRef(false);
   const [bookTitle, setBookTitle] = useState<string | null>(null);
   const [currentTocId, setCurrentTocId] = useState<string | null>(null);
   const [chapterLabel, setChapterLabel] = useState<string | null>(null);
@@ -100,7 +116,79 @@ export function EpubReader({ file }: { file: File }) {
   useApplyTheme();
   const revealChrome = useAutoHideChrome();
   // Theme + font settings applied to the reflowable rendition (real theming).
+  // Declared BEFORE the precompute effect so its effect runs first — the page
+  // walk must measure with the active font, not the default.
   useEpubTheme(rendition);
+
+  // ── Precompute the book-wide page map (research option 3) ─────────────────
+  // Walk every spine item on this rendition to count rendered pages per chapter
+  // and build a prefix sum. Runs behind the loading veil on first open and on
+  // every `recomputeToken` bump (layout-affecting settings changed). Because it
+  // walks the SAME rendition the reader uses, `offset[section] + displayed.page`
+  // is guaranteed consistent — the counter ticks by exactly 1, never jumps.
+  useEffect(() => {
+    if (!rendition) return;
+    let cancelled = false;
+    computingRef.current = true;
+    setPageMapStatus("computing");
+    setComputeProgress({ done: 0, total: 0 });
+
+    buildPageMap(rendition, (done, total) => {
+      if (!cancelled) setComputeProgress({ done, total });
+    })
+      .then((map) => {
+        if (cancelled) return;
+        setPageMap(map);
+        setPageMapStatus("ready");
+        setBookPage(bookPageFromLocation(rendition, map));
+      })
+      .catch(() => {
+        if (!cancelled) setPageMapStatus("failed");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        computingRef.current = false;
+        refreshProgress(rendition);
+      });
+
+    return () => {
+      cancelled = true;
+      computingRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rendition, recomputeToken]);
+
+  // Recompute the page map when a layout-affecting setting settles (font size /
+  // family / line-spacing / margins). Debounced so dragging a slider doesn't
+  // re-walk on every tick. Skips the first render (that's the initial compute).
+  useEffect(() => {
+    if (!settingsSettledRef.current) {
+      settingsSettledRef.current = true;
+      return;
+    }
+    const id = setTimeout(() => setRecomputeToken((t) => t + 1), 500);
+    return () => clearTimeout(id);
+  }, [
+    fontSettings.size,
+    fontSettings.family,
+    fontSettings.lineSpacing,
+    fontSettings.margins,
+  ]);
+
+  // Recompute on viewport resize too (page counts are width-dependent).
+  useEffect(() => {
+    if (pageMapStatus === "idle") return;
+    let id: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(id);
+      id = setTimeout(() => setRecomputeToken((t) => t + 1), 600);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [pageMapStatus]);
 
   // The book renders in an iframe whose input events do NOT bubble to the
   // parent window, so the auto-hide chrome would never reveal while the
@@ -128,8 +216,13 @@ export function EpubReader({ file }: { file: File }) {
     setRendition(null);
     setToc([]);
     setPercent(null);
-    setPage(null);
-    setTotalPages(null);
+    setPageMap(null);
+    setBookPage(null);
+    setPageMapStatus("idle");
+    setComputeProgress({ done: 0, total: 0 });
+    setRecomputeToken(0);
+    settingsSettledRef.current = false;
+    computingRef.current = false;
     setBookTitle(null);
     setCurrentTocId(null);
     setChapterLabel(null);
@@ -145,37 +238,21 @@ export function EpubReader({ file }: { file: File }) {
     };
   }, [file, setCurrentLocation]);
 
-  // Pull overall percentage (for the rail) + the book-wide location index
-  // (the page number) from the rendition's current position. The index is only
-  // meaningful once locations are generated — and right at generation time
-  // `currentLocation()` may not carry it yet (locations can finish before the
-  // first render settles), so fall back to resolving the CFI against the
-  // locations list directly.
+  // Overall percentage (drives the % rail + the library progress sync). Comes
+  // from epub.js's char-based `locations` — reflowable, layout-independent, so
+  // the rail stays stable across font changes. The book-wide PAGE number is
+  // handled separately by the page map (which IS layout-dependent).
   const refreshProgress = useCallback((r: Rendition) => {
     try {
       const current = r.currentLocation() as unknown as {
-        start?: { percentage?: number; location?: number; cfi?: string };
+        start?: { percentage?: number };
       };
-      const start = current?.start;
-      const p = start?.percentage;
+      const p = current?.start?.percentage;
       if (typeof p === "number" && p >= 0) {
         setPercent(Math.round(p * 100));
         // Report coarse progress for the library sync hook (D24).
         useReaderStore.getState().setProgressFraction(Math.min(Math.max(p, 0), 1));
       }
-
-      const locations = r.book.locations as unknown as {
-        length(): number;
-        locationFromCfi(cfi: string): number;
-      };
-      if (!locations.length()) return;
-      let loc = start?.location;
-      if (typeof loc !== "number" || loc < 0) {
-        const storeCfi = useReaderStore.getState().currentLocation;
-        const cfiStr = start?.cfi ?? (typeof storeCfi === "string" ? storeCfi : null);
-        if (cfiStr) loc = Number(locations.locationFromCfi(cfiStr));
-      }
-      if (typeof loc === "number" && loc >= 0) setPage(loc + 1);
     } catch {
       /* progress readout is best-effort */
     }
@@ -183,12 +260,16 @@ export function EpubReader({ file }: { file: File }) {
 
   const onLocationChanged = useCallback(
     (loc: string) => {
+      // Ignore relocations emitted by the precompute walk — they aren't the
+      // reader's real position and would fight react-reader's controlled prop.
+      if (computingRef.current) return;
       setCurrentLocation(loc);
-      // Derive progress from epub.js locations if generated, otherwise from
-      // the current spine position.
-      if (rendition) refreshProgress(rendition);
+      if (rendition) {
+        refreshProgress(rendition);
+        if (pageMap) setBookPage(bookPageFromLocation(rendition, pageMap));
+      }
     },
-    [rendition, setCurrentLocation, refreshProgress],
+    [rendition, setCurrentLocation, refreshProgress, pageMap],
   );
 
   const onGetRendition = useCallback((r: Rendition) => {
@@ -200,20 +281,17 @@ export function EpubReader({ file }: { file: File }) {
       .catch(() => {
         /* header falls back to nothing */
       });
-    // Generate coarse locations in the background so progress is stable
-    // (1000-char granularity keeps this fast even for large books). Until this
-    // resolves, percentages come back 0 and there's no page count — refresh
-    // once it's done so the indicator doesn't stall until the next page turn.
+    // Generate coarse char-based locations in the background — these drive the
+    // % rail + seeking + chapter ticks (layout-independent). The book-wide PAGE
+    // count is built separately by the precompute walk below.
     r.book.ready
       .then(() => r.book.locations.generate(1000))
       .then(() => {
         setLocationsReady(true);
-        const total = (r.book.locations as unknown as { length(): number }).length();
-        if (total > 0) setTotalPages(total);
         refreshProgress(r);
       })
       .catch(() => {
-        /* progress falls back to spine percentage */
+        /* rail falls back to spine percentage */
       });
   }, [refreshProgress]);
 
@@ -222,10 +300,14 @@ export function EpubReader({ file }: { file: File }) {
   // the page counter can't get stuck on its pre-locations fallback.
   useEffect(() => {
     if (!rendition) return;
-    const onRelocated = () => refreshProgress(rendition);
+    const onRelocated = () => {
+      if (computingRef.current) return;
+      refreshProgress(rendition);
+      if (pageMap) setBookPage(bookPageFromLocation(rendition, pageMap));
+    };
     rendition.on("relocated", onRelocated);
     return () => rendition.off("relocated", onRelocated);
-  }, [rendition, refreshProgress]);
+  }, [rendition, refreshProgress, pageMap]);
 
   const onTocChanged = useCallback((next: NavItem[]) => setToc(next), []);
 
@@ -404,13 +486,13 @@ export function EpubReader({ file }: { file: File }) {
     [rendition, jumpTo],
   );
 
-  // Footer badge: book-wide "Page N/total" (location index, clamped into range)
-  // alongside the overall percentage. Both appear once locations finish
-  // generating; until then only the percentage shows (or nothing at all right
-  // at open).
+  // Footer badge: accurate book-wide "Page N/total" from the page map, shown
+  // alongside the overall percentage. The map is ready before the reader is
+  // revealed (precompute behind the loading veil), so this is populated from
+  // the first frame.
   const pageBadge =
-    page != null && totalPages != null
-      ? `Page ${Math.min(page, totalPages)}/${totalPages}`
+    bookPage != null && pageMap != null
+      ? `Page ${bookPage}/${pageMap.total}`
       : null;
   const percentBadge = percent != null ? `${percent}%` : null;
 
@@ -480,6 +562,15 @@ export function EpubReader({ file }: { file: File }) {
     // (header/nav/rail/toolbar are `absolute` within it), which keeps them
     // clear of the sidebar without any transform on the epub iframe's ancestor.
     <div className="fixed inset-0 top-0 flex bg-reader-bg">
+      {/* Loading veil — covers the whole reader while the page map is being
+          computed (initial open or a layout-change recompute). The precompute
+          walk flips the rendition through every chapter underneath; this hides
+          that churn so the book isn't "rendered" to the user until pages are
+          counted (per the requested flow). */}
+      {pageMapStatus === "computing" && (
+        <PageComputingOverlay done={computeProgress.done} total={computeProgress.total} />
+      )}
+
       <TocSidebar
         open={tocSidebarOpen}
         entries={tocEntries}
@@ -545,7 +636,7 @@ export function EpubReader({ file }: { file: File }) {
 
         <ProgressRail
           percent={percent ?? 0}
-          totalPages={totalPages}
+          totalPages={pageMap?.total ?? null}
           ticks={railTicks}
           visible={chromeVisible}
           onSeek={onSeek}
@@ -666,6 +757,41 @@ export function EpubReader({ file }: { file: File }) {
 
 /** Loading = a page taking shape: faint prose-line bars in the same measure-
  * capped column the text will land in (no spinner, no "Loading…" string). */
+/**
+ * Full-cover veil shown while the page map is being computed (research option
+ * 3). Sits above the whole reader so the precompute walk isn't visible; shows a
+ * spinner + a chapter progress readout so a long book doesn't look frozen.
+ */
+function PageComputingOverlay({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Preparing the book"
+      className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-reader-bg px-6 text-center"
+    >
+      <span
+        aria-hidden="true"
+        className="h-8 w-8 rounded-full border-2 border-reader-fg/15 border-t-reader-accent motion-safe:animate-spin"
+      />
+      <div className="flex flex-col gap-1.5">
+        <p className="font-display text-xl font-semibold text-reader-fg">Preparing your book</p>
+        <p className="text-sm text-reader-fg/60">
+          Counting pages{total > 0 ? ` — ${done}/${total} chapters` : "…"}
+        </p>
+      </div>
+      {/* Thin determinate bar in the accent — mirrors the cover progress bar. */}
+      <div className="h-0.5 w-56 max-w-[70vw] overflow-hidden rounded-full bg-reader-fg/10">
+        <div
+          className="h-full bg-reader-accent transition-[width] duration-200"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function SkeletonPage() {
   const widths = ["w-2/5", "w-full", "w-full", "w-11/12", "w-full", "w-4/5", "", "w-full", "w-full", "w-10/12", "w-full", "w-3/5"];
   return (
