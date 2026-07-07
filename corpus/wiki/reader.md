@@ -43,7 +43,7 @@ Loading is a skeleton page; TOC/search jumps crossfade via an overlay veil
 | Feature | EPUB | PDF | Notes |
 |---|---|---|---|
 | Page nav (keys / click-zones / arrows) | ✅ | ✅ | core |
-| Progress indicator (% / page count) | ✅ | ✅ | core |
+| Progress indicator (% / page count) | ✅ | ✅ | EPUB = accurate book-wide pages (pre-paginated, see below) |
 | Table of contents drawer | ✅ | ⚠️ if outline | Base UI drawer |
 | Auto-hiding chrome | ✅ | ✅ | Kindle feel |
 | Themes (light / sepia / dark) | ✅ full | ⚠️ invert-only | reflow vs fixed |
@@ -98,6 +98,22 @@ arrows/TOC so shared `PageNav`/`TocDrawer` drive), `EpubControls` (fills the
 ThemePicker), `use-epub-theme` (applies **full** light/sepia/dark + fonts to the
 epub.js *rendition* — real reflow theming, not PDF's invert hack), `use-epub-toc`
 (flatten `book.navigation.toc`), `epub-search.ts` (spine walk → `section.find`).
+
+## EPUB book-wide page count (2026-07-07, pre-pagination)
+Reflowable EPUB has no intrinsic pages, so "Page N/M" is derived. **`epub-page-map.ts`**
+pre-paginates every spine item **on the reader's own rendition** (not a hidden
+one — a ±1px width mismatch would jump the count at chapter boundaries, epub.js
+#274) after the column width settles, reading each chapter's
+`currentLocation().start.displayed.total` and building a prefix sum. Book page =
+`offset[section] + displayed.page` → ticks by exactly 1, book-wide total is
+exact. The walk runs **behind a full loading veil** on open (the book isn't
+shown until pages are counted) and is recomputed (debounced, veil, position
+preserved) on font size/family/spacing/margin change + viewport resize — the
+only inputs that change visual page counts. Char-based `locations` are retained
+**only** for the % rail + seek + chapter ticks (they're layout-independent, so
+the rail stays stable across font changes). Superseded: the old
+locations-as-page-unit counter (stepped by 2, chunk-count "total"). PDF is
+unchanged (true fixed pages).
 
 ## Search (built in brief 07, both formats)
 Shared **`SearchPanel`** (`reader/chrome/`, right-anchored Base UI Dialog: query +

@@ -1,5 +1,30 @@
 # Log
 
+## [2026-07-07] done | EPUB accurate book-wide page count (pre-pagination, research option 3)
+
+Replaced the EPUB "Page N/M" counter. It previously used epub.js char-based
+`locations` (~1000-char chunks) as the page unit — book-wide but stepped by 2 /
+repeated on image pages, and "total" was a chunk count, not pages.
+
+Researched the options (see the summary in-session): per-chapter `displayed`
+(resets at boundaries), locations (what we had), and **option 3 — cumulative
+per-section rendered-page counts**, the only one that is book-wide + smooth-+1 +
+correct-total. Implemented option 3: `reader/epub/epub-page-map.ts` walks every
+spine item **on the same rendition the reader uses** (a separate hidden rendition
+risks a ±1px width mismatch → boundary jumps, epub.js #274), reads each chapter's
+`currentLocation().start.displayed.total`, and builds a prefix sum. Book page =
+`offset[section] + displayed.page`. Waits for the column width to settle before
+counting (else the total is measured against a transient mount layout and jumps
+once). Precompute runs **behind a full loading veil** ("Preparing your book —
+counting pages N/M chapters") so the book isn't shown until pages are known;
+recomputed (debounced, veil, position preserved) on font size/family/spacing/
+margin change and viewport resize. Char `locations` kept for the % rail + seek +
+chapter ticks (layout-independent). PDF unchanged (real fixed pages already).
+
+Verified live (Apothecary EPUB): Page 1/242 from the first frame, +1 per turn,
+chapter jump to Ch.8 → Page 106/242 (41%). Typecheck ×3 + build clean. Trade-off:
+open is slightly slower (one full pre-pagination pass), hidden by the veil.
+
 ## [2026-07-07] done | Persistent library + "Quiet Paper" home implemented & verified
 
 Built the feature the decision entry below planned. Three commits: corpus, then
