@@ -27,7 +27,9 @@ measure-capped column** (`spread: none`). Orientation lives at the edges and
 fades with the chrome: running header (book title / current chapter), footer
 "chapter · %" button (opens TOC at the current chapter), and a **scrubbable
 progress rail** along the bottom edge (chapter ticks in locations-space, hover
-tooltip, click/arrow-key seek). Settings is a Kindle-style **"Aa" panel**:
+tooltip, click / **drag** / arrow-key seek — dragging previews the fill +
+tooltip live and commits one seek on release; brief 08). Since brief 08 the
+rail is shared chrome and the PDF reader mounts it too. Settings is a Kindle-style **"Aa" panel**:
 theme swatches drawn as miniature pages, font specimens, A−/A+ steppers.
 Loading is a skeleton page; TOC/search jumps crossfade via an overlay veil
 (never opacity on the iframe's ancestors — Chromium raster staleness).
@@ -44,6 +46,7 @@ Loading is a skeleton page; TOC/search jumps crossfade via an overlay veil
 |---|---|---|---|
 | Page nav (keys / click-zones / arrows) | ✅ | ✅ | core |
 | Progress indicator (% / page count) | ✅ | ✅ | EPUB = accurate book-wide pages (pre-paginated, see below) |
+| Scrub rail (click / drag / arrow-key seek) | ✅ | ✅ | shared `ProgressRail` (brief 08); PDF ticks from outline |
 | Table of contents drawer | ✅ | ⚠️ if outline | Base UI drawer |
 | Auto-hiding chrome | ✅ | ✅ | Kindle feel |
 | Themes (light / sepia / dark) | ✅ full | ⚠️ invert-only | reflow vs fixed |
@@ -77,14 +80,19 @@ Shared, format-agnostic chrome lives in `apps/web/src/reader/chrome/`:
   reuse contract — brief 07 fills the slot, doesn't fork the toolbar.
 - `PageNav` (arrows + left/right-third click-zones), `use-page-nav-keys`
   (Arrow/PageUp-Down/Space), `use-auto-hide-chrome` (idle-hide → Zustand
-  `chromeVisible`), `ProgressIndicator`, `TocDrawer` (Base UI Dialog panel; entries
+  `chromeVisible`), `ProgressIndicator`, `ProgressRail` (bottom-edge scrub strip,
+  moved here from `epub/` in brief 08: hover tooltip, chapter ticks,
+  pointer-capture drag with live preview + commit-on-release, touch-safe),
+  `TocDrawer` (Base UI Dialog panel; entries
   carry an opaque `target` the reader resolves), `SettingsPopover`, `SliderControl`,
   `ThemePicker` (Tabs → `theme`), `use-apply-theme` (`data-theme` → `--reader-*`).
 - **`search-seam.ts`** — typed STUB (`SearchProvider`/`SearchMatch`); brief 07
   implements search for both formats against it (D19).
 
 PDF reader in `apps/web/src/reader/pdf/`: `PdfReader`, `PdfControls`,
-`use-pdf-outline`. Worker via `pdfjs-dist/build/pdf.worker.min.mjs?url` (bundled).
+`use-pdf-outline`. Mounts the shared `ProgressRail` (brief 08): percent =
+`currentPage / numPages`, ticks from top-level outline entries, seek =
+`goToPage(round(pct × numPages))`. Worker via `pdfjs-dist/build/pdf.worker.min.mjs?url` (bundled).
 **PDF TOC only when the doc has an outline.** Invert-dark = CSS `invert(1)
 hue-rotate(180deg)` on the canvas (fixed layout can't be re-themed).
 Store fields: `theme`, `fontSettings`, `currentLocation`, `chromeVisible`,

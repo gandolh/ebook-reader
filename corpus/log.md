@@ -202,3 +202,18 @@ env can serve stale composited frames for pages hosting huge epub iframes — a
 capture artifact, not a product bug; settings changes also re-render the
 current section as belt-and-suspenders). PDF reader regression-checked.
 Typecheck + build clean.
+
+## [2026-07-07] done | Brief 08 — draggable progress rail, shared by both readers
+
+The EPUB-only `ProgressRail` moved to `reader/chrome/` and gained pointer-capture
+drag: the fill + chapter tooltip preview the grab position live; the seek commits
+once on release (no per-move rendition thrash); touch scrubs without scrolling;
+pointer-cancel aborts cleanly. The PDF reader now mounts the same rail (page-based
+percent, ticks from top-level outline entries, page-number tooltip) — it previously
+had no rail at all. Scope widened from the source todo to both formats (owner call).
+Verified headless-Playwright against both fixtures: 10/10 drag/click/tooltip checks,
+zero console errors; typecheck clean ×3. See
+[briefs/done/08-draggable-progress-rail.md](briefs/done/08-draggable-progress-rail.md),
+[wiki/reader.md](wiki/reader.md). Env note: the library DB rows from the old
+`/home/gandolh` checkout point at dead absolute paths (500s on file/cover) —
+pre-existing, worked around by re-uploading fixtures; filed as an open question.

@@ -1,13 +1,21 @@
 # Status — 2026-07-07
 
-**Phase:** ✅ **Persistent library + "Quiet Paper" home shipped & verified**
+**Latest:** ✅ **Brief 08 — draggable progress rail, both readers** (2026-07-07 pm).
+The scrub rail is now shared chrome: pointer-capture drag with live preview,
+commit-on-release; the PDF reader gained the rail (outline ticks, page tooltip).
+Verified headless (10/10 checks, both fixtures, zero console errors). Remaining
+open todos: platform password, loading-state polish (needs the live link).
+New open question: library DB stores absolute file paths (dead rows after a
+checkout move — see [open-questions.md](open-questions.md)).
+
+**Prior phase:** ✅ **Persistent library + "Quiet Paper" home shipped & verified**
 (2026-07-07; reverses D3/D4, see D24–D27 and [design.md](design.md)). SQLite +
 on-disk file/cover storage, server-side cover extraction, library CRUD, and the
 rebuilt cover-card home. Verified live (Playwright + real files); see the log +
 TP-01. Not exhaustively covered: sepia theme, EPUB open-to-read with a real
 cover.
 
-**Prior phase:** ✅ v1 verified + "quiet paper" redesign shipped (2026-07-02 pm).
+**Earlier:** ✅ v1 verified + "quiet paper" redesign shipped (2026-07-02 pm).
 
 Since the morning test run: the EPUB reader got a designer pass (single centered
 column, running header, scrubbable chapter-tick progress rail, "Aa" settings
@@ -44,3 +52,4 @@ errors on a fresh load. Typecheck clean ×3.
 |---|---|---|
 | 01–07 | v1 build | **done** |
 | — | Full browser verification + UI audit | **done (2026-07-02)** |
+| 08 | Draggable progress rail (shared, both readers) | **done (2026-07-07)** |
