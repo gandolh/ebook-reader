@@ -233,3 +233,19 @@ retrying 401s. Verified end-to-end headless: 10/10 with auth on, disabled mode
 clean, zero unexpected console errors, typecheck ×3. See
 [briefs/done/09-platform-password.md](briefs/done/09-platform-password.md),
 [wiki/decisions.md](wiki/decisions.md) D28.
+
+## [2026-07-07] done | Brief 10 — loading feedback: instant open + download progress
+
+Probing the live deployment confirmed the todo: clicking a cover froze the
+library for the whole file transfer (24MB EPUB) with only a subtle card dim,
+and a failed download showed nothing (`try/finally`, no `catch`). Now the click
+navigates instantly; `useHydrateBook` is the single download path (click +
+refresh) and streams with byte progress against the row's `sizeBytes` (the
+server sends no Content-Length); `/read` shows an opening screen (cover,
+Playfair title, determinate accent bar, %) and an error state with "Try again"
++ back-to-library. Verified on a CDP-throttled network: opening screen in
+~65ms, bar advances, error path + retry recover; typecheck ×3. See
+[briefs/done/10-loading-feedback.md](briefs/done/10-loading-feedback.md).
+Out of scope: the live host's ~3s first-HTML latency (server-side). Owner
+instruction mid-brief: the VPS address never goes into git, and nothing is
+committed until they say so.

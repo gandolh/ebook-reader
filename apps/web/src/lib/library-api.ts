@@ -57,12 +57,39 @@ export function coverUrl(id: string): string {
 /**
  * Fetch a stored book's original bytes as a `File` so the existing readers
  * (which consume an in-memory `File` from Zustand) can render it unchanged.
+ *
+ * Streams the body and reports download progress as a 0–1 fraction (brief 10).
+ * The server streams without Content-Length, so the library row's `sizeBytes`
+ * is the total; `null` means indeterminate (streaming unavailable). Completion
+ * always reports exactly 1.
  */
-export async function fetchBookFile(book: LibraryBook): Promise<File> {
+export async function fetchBookFile(
+  book: LibraryBook,
+  onProgress?: (fraction: number | null) => void,
+): Promise<File> {
   const res = await apiFetch(`/library/${book.id}/file`);
-  const blob = await res.blob();
   const ext = book.format;
   const mime = ext === "pdf" ? "application/pdf" : "application/epub+zip";
   const safeName = `${book.title || book.id}.${ext}`.replace(/[/\\]/g, "_");
+
+  let blob: Blob;
+  if (res.body && book.sizeBytes > 0) {
+    const reader = res.body.getReader();
+    const chunks: BlobPart[] = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.byteLength;
+      // Clamp below 1 mid-stream — only actual completion reports 1.
+      onProgress?.(Math.min(received / book.sizeBytes, 0.99));
+    }
+    blob = new Blob(chunks);
+  } else {
+    onProgress?.(null);
+    blob = await res.blob();
+  }
+  onProgress?.(1);
   return new File([blob], safeName, { type: mime });
 }

@@ -2,9 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { LIBRARY_SORTS, type LibraryBook, type LibrarySort } from "@ebook-reader/shared";
 
-import { useReaderStore } from "../store/reader-store";
 import { useApplyTheme } from "../reader/chrome/use-apply-theme";
-import { fetchBookFile } from "../lib/library-api";
 import { useDeleteBook, useLibrary, useUploadBook } from "../lib/use-library";
 import { LibraryHeader } from "../library/LibraryHeader";
 import { UploadZone } from "../library/UploadZone";
@@ -31,25 +29,18 @@ export function Home() {
   useApplyTheme();
 
   const navigate = useNavigate();
-  const setLoadedBook = useReaderStore((s) => s.setLoadedBook);
 
   const [sort, setSort] = useState<LibrarySort>("recent");
-  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const library = useLibrary(sort);
   const upload = useUploadBook();
   const remove = useDeleteBook();
 
-  async function openBook(book: LibraryBook) {
-    setOpeningId(book.id);
-    try {
-      const file = await fetchBookFile(book);
-      setLoadedBook(file, book.format, book.id);
-      // Encode the book id so a refresh on /read can re-fetch it.
-      void navigate({ to: "/read", search: { format: book.format, book: book.id } });
-    } finally {
-      setOpeningId(null);
-    }
+  // Navigate immediately — /read's hydrate hook does the download and shows a
+  // progress screen (brief 10). Downloading here first left the library frozen
+  // with no feedback for the whole transfer.
+  function openBook(book: LibraryBook) {
+    void navigate({ to: "/read", search: { format: book.format, book: book.id } });
   }
 
   const books = library.data ?? [];
@@ -102,9 +93,7 @@ export function Home() {
         ) : (
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
             {books.map((book) => (
-              <div key={book.id} className={openingId === book.id ? "pointer-events-none opacity-60" : ""}>
-                <CoverCard book={book} onOpen={openBook} onDelete={(b) => remove.mutate(b)} />
-              </div>
+              <CoverCard key={book.id} book={book} onOpen={openBook} onDelete={(b) => remove.mutate(b)} />
             ))}
           </div>
         )}

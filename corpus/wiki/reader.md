@@ -10,7 +10,9 @@ The home page (`/`) is a **persistent library** (D24), styled per
 **"Add to Library"** dropzone (upload → `POST /library`), then a **cover-card
 gallery** (`GET /library`) with EPUB/PDF badges, title/author, and a 2px blue
 progress bar. Missing cover → typographic fallback tile. Empty state reinforces
-upload. Opening a card fetches `GET /library/:id/file` into the reader; progress
+upload. Opening a card navigates to `/read` **instantly**; the route's hydrate
+hook streams `GET /library/:id/file` behind an opening screen (cover + title +
+determinate download bar, error state with retry — brief 10); reading progress
 `PATCH`es back. Delete via a per-card overflow control.
 
 Detection still by extension/MIME (D13). **Both formats open the reader

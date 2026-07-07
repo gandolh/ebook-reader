@@ -1,6 +1,13 @@
 # Status — 2026-07-07
 
-**Latest:** ✅ **Brief 09 — platform password** (2026-07-07 pm, D28 revises D2).
+**Latest:** ✅ **Brief 10 — loading feedback** (2026-07-07 pm, **uncommitted by
+owner instruction**). Cover clicks navigate instantly; the book downloads behind
+an opening screen with a real progress bar (streamed against `sizeBytes`);
+failures get an error state + retry (previously silent). All three 2026-07-07
+todos are now done. NOTE: briefs 08/09 are committed; brief 10 + this corpus
+update are not — owner decides when.
+
+**Earlier today:** ✅ **Brief 09 — platform password** (D28 revises D2).
 `APP_PASSWORD` on the API gates everything (stateless sha256 token, Bearer or
 `?token=` for covers); Quiet-Paper lock screen, localStorage persistence,
 re-lock on 401; unset env → auth off + warning. Review-hardened (log redaction,
@@ -61,3 +68,4 @@ errors on a fresh load. Typecheck clean ×3.
 | — | Full browser verification + UI audit | **done (2026-07-02)** |
 | 08 | Draggable progress rail (shared, both readers) | **done (2026-07-07)** |
 | 09 | Platform password (`APP_PASSWORD`, D28) | **done (2026-07-07)** |
+| 10 | Loading feedback (instant open + download progress) | **done (2026-07-07, uncommitted)** |
