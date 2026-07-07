@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { DEFAULT_MAX_UPLOAD_MB, maxUploadBytesFromMb } from "@ebook-reader/shared";
 
 /**
@@ -24,3 +26,21 @@ export const CONVERT_TIMEOUT_MS = numberFromEnv(
   process.env.CONVERT_TIMEOUT_MS,
   60_000,
 );
+
+/**
+ * Library storage roots (decisions.md D24/D25). Everything lives under the
+ * API package's `data/` (DB) and sibling dirs, resolved relative to this
+ * source file so it's stable regardless of cwd (dev `tsx` vs built `dist/`).
+ * All three are gitignored. Override the base with `LIBRARY_DATA_DIR`.
+ */
+const HERE = dirname(fileURLToPath(import.meta.url)); // apps/api/src (or dist)
+const API_ROOT = resolve(HERE, "..");
+
+export const DATA_DIR = process.env.LIBRARY_DATA_DIR
+  ? resolve(process.env.LIBRARY_DATA_DIR)
+  : resolve(API_ROOT, "data");
+export const DB_PATH = resolve(DATA_DIR, "library.db");
+/** Original uploaded PDF/EPUB files: `library/<id>.<ext>`. */
+export const LIBRARY_FILES_DIR = resolve(API_ROOT, "library");
+/** Extracted cover thumbnails: `images/thumbnails/<id>.jpg`. */
+export const THUMBNAILS_DIR = resolve(API_ROOT, "images", "thumbnails");

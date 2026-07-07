@@ -40,3 +40,8 @@ testing_files/
 
 # Impeccable skill local state
 .impeccable/
+
+# Server-side library storage (D25 — user data, never committed)
+apps/api/data/
+apps/api/library/
+apps/api/images/

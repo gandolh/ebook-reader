@@ -43,3 +43,17 @@ export {
   convertErrorSchema,
 } from "./convert-error.js";
 export type { ConvertErrorCode, ConvertError } from "./convert-error.js";
+
+// --- Library book contract (D24) ------------------------------------------
+export {
+  libraryBookSchema,
+  libraryListSchema,
+  updateProgressSchema,
+  LIBRARY_SORTS,
+  librarySortSchema,
+} from "./library-book.js";
+export type {
+  LibraryBook,
+  UpdateProgressRequest,
+  LibrarySort,
+} from "./library-book.js";

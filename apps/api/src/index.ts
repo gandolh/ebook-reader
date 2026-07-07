@@ -10,6 +10,7 @@ import {
   PORT,
 } from "./config.js";
 import { registerConvertRoute } from "./convert-route.js";
+import { registerLibraryRoutes } from "./library-routes.js";
 
 const app = Fastify({ logger: true });
 
@@ -28,6 +29,7 @@ app.get("/health", async () => {
 });
 
 registerConvertRoute(app);
+registerLibraryRoutes(app);
 
 /**
  * Startup probe for `ebook-convert` (brief step 2). Missing Calibre is NOT
