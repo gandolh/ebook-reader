@@ -10,9 +10,12 @@ update are not — owner decides when.
 **Earlier today:** ✅ **Brief 09 — platform password** (D28 revises D2).
 `APP_PASSWORD` on the API gates everything (stateless sha256 token, Bearer or
 `?token=` for covers); Quiet-Paper lock screen, localStorage persistence,
-re-lock on 401; unset env → auth off + warning. Review-hardened (log redaction,
-duplicate-token 401, no 401 retries). Verified end-to-end headless.
-**Deploy note: set `APP_PASSWORD` on the VPS or the deployment stays open.**
+re-lock on 401. Review-hardened (log redaction, duplicate-token 401, no 401
+retries). Verified end-to-end headless. **Update 2026-07-08 (D29): `APP_PASSWORD`
+is now a REQUIRED, validated env var — the old "unset → auth off" open mode is
+gone; the API refuses to start without it (and every `.env` var).**
+**Deploy note: set `APP_PASSWORD` (and all `.env` vars) on the VPS — the API
+won't boot otherwise.**
 
 **Also today:** ✅ **Brief 08 — draggable progress rail, both readers**.
 The scrub rail is now shared chrome: pointer-capture drag with live preview,

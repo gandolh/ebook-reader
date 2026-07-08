@@ -85,22 +85,17 @@ async function checkCalibre(): Promise<void> {
 }
 
 /**
- * Startup check for the platform password (brief 09). Auth is opt-in: when
- * APP_PASSWORD is unset the API is wide open, so we log a loud warning box
- * mirroring the Calibre probe above.
+ * Startup check for the platform password (brief 09). `APP_PASSWORD` is now a
+ * required, validated env var (see config.ts), so auth is always enabled by the
+ * time we get here — this is just a confirming log. `isAuthEnabled` is kept as
+ * defence-in-depth in auth.ts should that invariant ever change.
  */
 function checkAppPassword(): void {
-  if (isAuthEnabled) {
-    app.log.info("APP_PASSWORD is set — platform password auth enabled.");
-    return;
+  if (!isAuthEnabled) {
+    // Should be unreachable: config.ts aborts startup when APP_PASSWORD is unset.
+    throw new Error("APP_PASSWORD is not configured — refusing to start.");
   }
-  app.log.warn(
-    "============================================================\n" +
-      "  WARNING: APP_PASSWORD is not set.\n" +
-      "  The API is OPEN — anyone can reach the library.\n" +
-      "  Set APP_PASSWORD to enable the platform password.\n" +
-      "============================================================",
-  );
+  app.log.info("APP_PASSWORD is set — platform password auth enabled.");
 }
 
 async function start(): Promise<void> {

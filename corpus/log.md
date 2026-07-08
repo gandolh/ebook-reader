@@ -1,5 +1,35 @@
 # Log
 
+## [2026-07-08] decision | Env validated + required at startup (D29, revises D28)
+
+Prompted by a user report: opening the app with empty localStorage never asked
+for the platform password. Root cause was working-as-designed — brief 09 (D28)
+made `APP_PASSWORD` **opt-in**: unset → API open, no lock screen, only a startup
+warning. The dev server was simply running without the var set.
+
+User decided to reverse that: **all `.env` vars are now required and validated
+at startup, no defaults** (chose "all vars required" + a single root
+`.env.example`). Implemented:
+- `apps/api/src/config.ts` rewritten — loads the repo-root `.env` best-effort
+  (`process.loadEnvFile`, guarded by `existsSync` so prod can inject via a
+  process manager), then validates `PORT`/`HOST`/`APP_PASSWORD`/`MAX_UPLOAD_MB`/
+  `CONVERT_TIMEOUT_MS` with a zod schema. Any missing/blank/malformed value →
+  clear stderr box + `process.exit(1)`. `APP_PASSWORD` is now typed non-null.
+- `apps/web/vite.config.ts` — `envDir` pointed at the repo root (single `.env`
+  feeds web too) and throws if `VITE_API_URL` is unset. Dropped the
+  `?? "http://localhost:3001"` fallback in `api-client.ts`; `vite-env.d.ts`
+  makes `VITE_API_URL` non-optional.
+- `apps/api/src/index.ts` — the now-unreachable "API is OPEN" startup warning
+  simplified to a confirming log (`isAuthEnabled` kept as defence-in-depth).
+- `.env.example` completed (was missing `APP_PASSWORD` + `HOST`); added `zod` to
+  `apps/api` deps.
+
+Verified: `node dist/index.js` with `.env` moved aside → exit 1 listing every
+missing var; with a valid `.env` → boots + logs "APP_PASSWORD is set". Typecheck
+clean ×3. Optional overrides `LIBRARY_DATA_DIR`/`BASE_PATH` stay non-required.
+Brief 09 left immutable (records the original opt-in design); D28 clause struck
+in decisions.md with a pointer to D29.
+
 ## [2026-07-07] done | EPUB accurate book-wide page count (pre-pagination, research option 3)
 
 Replaced the EPUB "Page N/M" counter. It previously used epub.js char-based

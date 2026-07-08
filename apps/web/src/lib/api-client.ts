@@ -12,7 +12,9 @@
  * `auth.ts` calls `setAuthToken`/`setOnUnauthorized` to wire itself up.
  */
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+// Required — `vite.config.ts` throws at startup if VITE_API_URL is unset, so
+// there is no silent localhost fallback here (see .env.example).
+export const API_BASE_URL: string = import.meta.env.VITE_API_URL;
 
 export class ApiError extends Error {
   readonly status: number;

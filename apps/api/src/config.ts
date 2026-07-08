@@ -1,48 +1,88 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { DEFAULT_MAX_UPLOAD_MB, maxUploadBytesFromMb } from "@ebook-reader/shared";
+import { z } from "zod";
+import { maxUploadBytesFromMb } from "@ebook-reader/shared";
 
 /**
- * Runtime configuration, resolved once from the environment. Falls back to the
- * D15 defaults (50MB / 60s) and the shared byte-limit helper so client and
- * server agree on the ceiling.
+ * Runtime configuration, resolved once from the environment and validated at
+ * import time. Unlike the previous "safe defaults" scheme, every variable in
+ * the .env contract is now REQUIRED — a missing or malformed value aborts
+ * startup with a clear message instead of silently falling back (so e.g. the
+ * platform password can never be accidentally left unset, leaving the API
+ * open). See .env.example for the full contract.
  */
-function numberFromEnv(value: string | undefined, fallback: number): number {
-  if (value === undefined || value.trim() === "") return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+
+const HERE = dirname(fileURLToPath(import.meta.url)); // apps/api/src (or dist)
+const API_ROOT = resolve(HERE, "..");
+const REPO_ROOT = resolve(API_ROOT, "..", "..");
+
+/**
+ * Load the single repo-root `.env` into process.env before validating.
+ * Best-effort: in production the variables may be injected by the process
+ * manager (pm2/systemd) rather than a file, so a missing `.env` is fine — the
+ * schema check below is the real gate.
+ */
+const ENV_FILE = resolve(REPO_ROOT, ".env");
+if (existsSync(ENV_FILE)) {
+  process.loadEnvFile(ENV_FILE);
 }
 
-export const PORT = numberFromEnv(process.env.PORT, 3001);
-export const HOST = process.env.HOST ?? "0.0.0.0";
+/**
+ * Every API variable is required. Numbers are coerced from their string env
+ * form and must be positive; strings must be non-empty (so `APP_PASSWORD=`
+ * counts as unset). Path overrides (LIBRARY_DATA_DIR/BASE_PATH) are NOT part of
+ * this contract — they stay optional below.
+ */
+const envSchema = z.object({
+  PORT: z.coerce.number().int().positive(),
+  HOST: z.string().min(1),
+  APP_PASSWORD: z.string().min(1),
+  MAX_UPLOAD_MB: z.coerce.number().positive(),
+  CONVERT_TIMEOUT_MS: z.coerce.number().int().positive(),
+});
+
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  const lines = parsed.error.issues.map(
+    (issue) => `  - ${issue.path.join(".") || "(env)"}: ${issue.message}`,
+  );
+  // Fail fast: don't boot a half-configured server. Written to stderr directly
+  // (the Fastify logger isn't up yet) and exit non-zero.
+  console.error(
+    "\n============================================================\n" +
+      "  Invalid or missing environment configuration.\n" +
+      "  Set these variables (copy .env.example to .env) and retry:\n\n" +
+      lines.join("\n") +
+      "\n============================================================\n",
+  );
+  process.exit(1);
+}
+
+const env = parsed.data;
+
+export const PORT = env.PORT;
+export const HOST = env.HOST;
 
 /**
- * Shared platform password (brief 09). When unset/blank the API is OPEN — the
- * auth guard becomes a no-op. Trimmed so stray whitespace doesn't silently
- * enable auth with a surprising password.
+ * Shared platform password (brief 09). Now always a non-empty string — the
+ * schema above rejects an unset/blank value, so the API can no longer boot in
+ * the old "open" mode.
  */
-export const APP_PASSWORD = process.env.APP_PASSWORD?.trim() || null;
+export const APP_PASSWORD = env.APP_PASSWORD;
 
-export const MAX_UPLOAD_MB = numberFromEnv(
-  process.env.MAX_UPLOAD_MB,
-  DEFAULT_MAX_UPLOAD_MB,
-);
+export const MAX_UPLOAD_MB = env.MAX_UPLOAD_MB;
 export const MAX_UPLOAD_BYTES = maxUploadBytesFromMb(MAX_UPLOAD_MB);
 
-export const CONVERT_TIMEOUT_MS = numberFromEnv(
-  process.env.CONVERT_TIMEOUT_MS,
-  60_000,
-);
+export const CONVERT_TIMEOUT_MS = env.CONVERT_TIMEOUT_MS;
 
 /**
  * Library storage roots (decisions.md D24/D25). Everything lives under the
  * API package's `data/` (DB) and sibling dirs, resolved relative to this
  * source file so it's stable regardless of cwd (dev `tsx` vs built `dist/`).
- * All three are gitignored. Override the base with `LIBRARY_DATA_DIR`.
+ * All three are gitignored. Override the base with `LIBRARY_DATA_DIR` (an
+ * optional deploy override, not part of the required .env contract).
  */
-const HERE = dirname(fileURLToPath(import.meta.url)); // apps/api/src (or dist)
-const API_ROOT = resolve(HERE, "..");
-
 export const DATA_DIR = process.env.LIBRARY_DATA_DIR
   ? resolve(process.env.LIBRARY_DATA_DIR)
   : resolve(API_ROOT, "data");
