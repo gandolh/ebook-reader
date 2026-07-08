@@ -136,7 +136,20 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     const row = getBook(id);
     if (!row) return reply.status(404).send({ error: "Book not found." });
 
+    // Record the open (drives "recently opened" ordering) even on a cache hit.
     touchOpened(id, nowIso());
+
+    // The stored bytes for an id never change — a re-upload gets a fresh id — so
+    // the id doubles as a strong validator. `no-cache` makes the browser
+    // revalidate on every open, but a matching If-None-Match short-circuits to a
+    // 304 (no multi-MB re-download of the book) while the touch above still
+    // runs. Without this the reader re-streams the whole file on every refresh.
+    const etag = `"${id}"`;
+    reply.header("Cache-Control", "private, no-cache").header("ETag", etag);
+    if (request.headers["if-none-match"] === etag) {
+      return reply.status(304).send();
+    }
+
     reply
       .header("Content-Type", CONTENT_TYPE[row.format])
       .header("Content-Disposition", `inline; filename="${id}.${row.format}"`);

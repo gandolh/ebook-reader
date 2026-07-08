@@ -1,3 +1,4 @@
+import ePub from "epubjs";
 import type { Rendition } from "epubjs";
 
 /**
@@ -10,15 +11,13 @@ import type { Rendition } from "epubjs";
  * by exactly 1 per screen turn, we pre-paginate every spine item and build a
  * prefix sum of per-chapter page counts.
  *
- * Crucially we walk the SAME rendition the reader will use, not a separate
- * hidden one: a hidden rendition whose pixel width differs by even 1px can
- * report a different page count for a section (epub.js #274), which would make
- * the counter jump at chapter boundaries. Same rendition → offsets and the live
- * `displayed.page` share one layout → guaranteed consistency.
- *
- * The walk moves the rendition through every section, so callers MUST run it
- * behind a loading veil and (for a mid-read recompute) it restores the position
- * it started from when done.
+ * The count is width/height-sensitive (epub.js #274: a stage that differs by
+ * even 1px can report a different page total for a section). So the walk renders
+ * a throwaway Book — parsed from the SAME bytes — into an OFF-SCREEN stage sized
+ * to exactly match the visible reader's stage, with the same theme + font
+ * settings applied. Because the measuring rendition is fully detached, the walk
+ * never moves the page the user is reading: the reader shows the resume position
+ * immediately and this runs in the background (see EpubReader).
  */
 
 export interface EpubPageMap {
@@ -28,6 +27,12 @@ export interface EpubPageMap {
   counts: number[];
   /** Total rendered pages across the whole book at the current layout. */
   total: number;
+}
+
+/** Pixel size of a rendition's paginated stage (one column, `spread: none`). */
+export interface StageSize {
+  width: number;
+  height: number;
 }
 
 interface DisplayedLoc {
@@ -47,105 +52,144 @@ function readLoc(rendition: Rendition): DisplayedLoc | null {
   }
 }
 
-/** Current column/stage width, read loosely from the manager's layout. */
-function stageWidth(rendition: Rendition): number {
+/** Current stage width/height, read loosely from the manager's layout. */
+export function stageSize(rendition: Rendition): StageSize {
   const m = rendition as unknown as {
     manager?: {
-      layout?: { width?: number; pageWidth?: number };
-      stage?: { stageSize?: () => { width?: number } };
+      layout?: { width?: number; height?: number; pageWidth?: number };
+      stage?: { stageSize?: () => { width?: number; height?: number } };
     };
   };
-  return (
-    m.manager?.layout?.pageWidth ??
-    m.manager?.layout?.width ??
-    m.manager?.stage?.stageSize?.()?.width ??
-    -1
-  );
+  const s = m.manager?.stage?.stageSize?.();
+  const width =
+    m.manager?.layout?.pageWidth ?? m.manager?.layout?.width ?? s?.width ?? -1;
+  const height = m.manager?.layout?.height ?? s?.height ?? -1;
+  return { width, height };
 }
 
 const raf = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 40)));
 
 /**
- * Wait until the reader's column width stops changing before counting pages.
+ * Wait until the visible reader's stage stops changing, then return its size.
  * On mount the column animates/settles to its final (max-width-capped) size;
- * counting too early measures a transient width and yields a wrong total that
- * then "jumps" when corrected. Poll until two consecutive frames agree.
+ * measuring against a transient stage yields a wrong total that then "jumps"
+ * when corrected. Poll until two consecutive frames agree.
  */
-async function waitForStableLayout(rendition: Rendition): Promise<void> {
-  let last = -1;
+export async function settledStageSize(rendition: Rendition): Promise<StageSize> {
+  let last: StageSize = { width: -1, height: -1 };
   for (let i = 0; i < 25; i++) {
-    const w = stageWidth(rendition);
-    if (w > 0 && w === last) return;
-    last = w;
+    const s = stageSize(rendition);
+    if (s.width > 0 && s.width === last.width && s.height === last.height) return s;
+    last = s;
     await raf();
   }
+  return last;
 }
 
 /**
- * Pre-paginate the whole book and build the page map. Restores the rendition to
- * wherever it started (so a mid-read recompute keeps the reader's place).
+ * Pre-paginate the whole book OFF-SCREEN and build the page map. Parses an
+ * independent Book from `data` and renders it into a detached, zero-visibility
+ * stage sized to `size`, so the walk never touches the visible reader. The
+ * throwaway rendition/book are always destroyed before returning.
  *
+ * @param data   the EPUB bytes (same buffer the visible reader was given).
+ * @param size   the visible reader's settled stage size (must match, or counts
+ *               disagree with the on-screen pages — epub.js #274).
+ * @param applyStyles applies the active theme + font settings to the measuring
+ *               rendition, so it lays out identically to the visible one.
  * @param onProgress reports `(done, total)` sections as the walk proceeds.
  */
-export async function buildPageMap(
-  rendition: Rendition,
+export async function buildPageMapDetached(
+  data: ArrayBuffer,
+  size: StageSize,
+  applyStyles: (rendition: Rendition) => void,
   onProgress?: (done: number, total: number) => void,
 ): Promise<EpubPageMap> {
-  const book = rendition.book;
-  await book.ready;
-  // Let the column reach its final width first, or the counts (and total) will
-  // be measured against a transient layout and jump once when corrected.
-  await waitForStableLayout(rendition);
-  // If the pane is degenerate (≈zero width — e.g. the sidebar is crushing it),
-  // pagination is meaningless and would yield garbage counts. Bail with a
-  // single-page map; the caller recomputes once the layout is real.
-  if (stageWidth(rendition) <= 1) {
+  // A degenerate stage (≈zero width/height) can't be paginated meaningfully;
+  // bail with a single-page map. The caller recomputes once the layout is real.
+  if (size.width <= 1 || size.height <= 1) {
     return { offsets: [0], counts: [1], total: 1 };
   }
 
-  // `spineItems` exists at runtime but isn't in epub.js's TS types.
-  const spine = book.spine as unknown as {
-    spineItems?: Array<{ index?: number; href: string }>;
-  };
-  const items = spine.spineItems ?? [];
-  const restoreCfi = readLoc(rendition)?.start?.cfi ?? null;
+  const width = Math.round(size.width);
+  const height = Math.round(size.height);
 
-  const counts: number[] = [];
-  let maxIndex = 0;
+  // Off-screen, laid-out-but-invisible container (visibility:hidden keeps
+  // layout so epub.js can still measure; display:none would report zero size).
+  const container = document.createElement("div");
+  container.setAttribute("aria-hidden", "true");
+  Object.assign(container.style, {
+    position: "fixed",
+    left: "-99999px",
+    top: "0px",
+    width: `${width}px`,
+    height: `${height}px`,
+    visibility: "hidden",
+    pointerEvents: "none",
+  });
+  document.body.appendChild(container);
 
-  for (let i = 0; i < items.length; i++) {
-    const section = items[i];
-    const idx = typeof section.index === "number" ? section.index : i;
-    maxIndex = Math.max(maxIndex, idx);
-
-    await rendition.display(section.href);
-    const total = readLoc(rendition)?.start?.displayed?.total;
-    // Guard against a degenerate layout (e.g. a crushed/zero-width pane) where
-    // epub.js can report a non-finite or absurd page count — clamp to ≥ 1 so
-    // the book total can never come out as Infinity/NaN.
-    counts[idx] = Number.isFinite(total) && (total as number) > 0 ? (total as number) : 1;
-
-    onProgress?.(i + 1, items.length);
-  }
-
-  const offsets: number[] = [];
-  let acc = 0;
-  for (let i = 0; i <= maxIndex; i++) {
-    offsets[i] = acc;
-    acc += counts[i] ?? 1;
-  }
-
-  // Return to where we started (chapter 0 on first open; the reader's spot on a
-  // mid-read recompute). Best-effort — a failed restore just lands at start.
+  const book = ePub(data);
+  let rendition: Rendition | null = null;
   try {
-    if (restoreCfi) await rendition.display(restoreCfi);
-    else if (items[0]) await rendition.display(items[0].href);
-  } catch {
-    /* restore is best-effort */
-  }
+    rendition = book.renderTo(container, {
+      flow: "paginated",
+      spread: "none",
+      width,
+      height,
+    });
+    // Apply theme/font BEFORE the first layout so every measured section is
+    // paginated against the same metrics the reader shows.
+    applyStyles(rendition);
+    await rendition.display();
+    await book.ready;
 
-  return { offsets, counts, total: Math.max(acc, 1) };
+    // `spineItems` exists at runtime but isn't in epub.js's TS types.
+    const spine = book.spine as unknown as {
+      spineItems?: Array<{ index?: number; href: string }>;
+    };
+    const items = spine.spineItems ?? [];
+
+    const counts: number[] = [];
+    let maxIndex = 0;
+    for (let i = 0; i < items.length; i++) {
+      const section = items[i];
+      const idx = typeof section.index === "number" ? section.index : i;
+      maxIndex = Math.max(maxIndex, idx);
+
+      await rendition.display(section.href);
+      const total = readLoc(rendition)?.start?.displayed?.total;
+      // Guard against a degenerate layout reporting a non-finite/absurd count —
+      // clamp to ≥ 1 so the book total can never come out as Infinity/NaN.
+      counts[idx] = Number.isFinite(total) && (total as number) > 0 ? (total as number) : 1;
+
+      onProgress?.(i + 1, items.length);
+    }
+
+    const offsets: number[] = [];
+    let acc = 0;
+    for (let i = 0; i <= maxIndex; i++) {
+      offsets[i] = acc;
+      acc += counts[i] ?? 1;
+    }
+
+    return { offsets, counts, total: Math.max(acc, 1) };
+  } finally {
+    // Tear the throwaway rendition/book down so its iframes + listeners don't
+    // leak (this runs on every recompute — font change, resize).
+    try {
+      rendition?.destroy();
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      (book as unknown as { destroy(): void }).destroy();
+    } catch {
+      /* best-effort cleanup */
+    }
+    container.remove();
+  }
 }
 
 /** The relevant fields of a `relocated` event payload / current location. */

@@ -22,7 +22,7 @@ const THEME_COLORS: Record<Theme, { bg: string; fg: string; link: string }> = {
   dark: { bg: "#181818", fg: "#e8e8e8", link: "#60a5fa" },
 };
 
-function themeRules(theme: Theme, lineSpacing: number, margins: number) {
+export function themeRules(theme: Theme, lineSpacing: number, margins: number) {
   const c = THEME_COLORS[theme];
   return {
     // iOS Safari auto-inflates text sized against a block's width. epub.js lays

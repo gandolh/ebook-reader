@@ -29,13 +29,14 @@ import {
   usePageNavKeys,
 } from "../chrome";
 import { EpubControls } from "./EpubControls";
-import { EpubSettings } from "./EpubSettings";
+import { EpubSettings, fontStackFor } from "./EpubSettings";
 import { useEpubToc } from "./use-epub-toc";
-import { useEpubTheme } from "./use-epub-theme";
+import { useEpubTheme, themeRules } from "./use-epub-theme";
 import { createEpubSearchProvider } from "./epub-search";
 import { resolveSpineHref } from "./resolve-spine-href";
 import {
-  buildPageMap,
+  buildPageMapDetached,
+  settledStageSize,
   bookPageFromLocation,
   type EpubPageMap,
   type LocationLike,
@@ -95,19 +96,13 @@ export function EpubReader({ file }: { file: File }) {
   // page number jumping around.
   const pageMapRef = useRef<EpubPageMap | null>(null);
   const [bookPage, setBookPage] = useState<number | null>(null);
-  // "computing" = pre-paginating behind the loading veil (initial or recompute).
+  // "computing" = the background page-map walk is in flight (initial or a
+  // layout-change recompute). It no longer gates the reader — the book stays
+  // visible and interactive throughout; only the "Page N/M" badge waits on it.
   const [pageMapStatus, setPageMapStatus] =
     useState<"idle" | "computing" | "ready" | "failed">("idle");
-  const [computeProgress, setComputeProgress] = useState<{ done: number; total: number }>({
-    done: 0,
-    total: 0,
-  });
   // Bumped to force a page-map recompute (layout-affecting settings changed).
   const [recomputeToken, setRecomputeToken] = useState(0);
-  // While true, the precompute walk is driving `display()` through every
-  // section — ignore its relocations so they don't churn store state or fight
-  // react-reader's controlled `location` prop.
-  const computingRef = useRef(false);
   // Skip the debounced recompute on the very first settings render.
   const settingsSettledRef = useRef(false);
   const [bookTitle, setBookTitle] = useState<string | null>(null);
@@ -131,46 +126,55 @@ export function EpubReader({ file }: { file: File }) {
   // walk must measure with the active font, not the default.
   useEpubTheme(rendition);
 
-  // ── Precompute the book-wide page map (research option 3) ─────────────────
-  // Walk every spine item on this rendition to count rendered pages per chapter
-  // and build a prefix sum. Runs behind the loading veil on first open and on
-  // every `recomputeToken` bump (layout-affecting settings changed). Because it
-  // walks the SAME rendition the reader uses, `offset[section] + displayed.page`
-  // is guaranteed consistent — the counter ticks by exactly 1, never jumps.
+  // ── Build the book-wide page map in the BACKGROUND ────────────────────────
+  // "Page N / M" needs an accurate per-chapter page count, which epub.js only
+  // knows AFTER laying each chapter out. Rather than block the open behind a
+  // veil (the old flow walked the VISIBLE rendition through every chapter), we
+  // parse a second, throwaway Book from the same bytes and walk it OFF-SCREEN
+  // at the exact stage size + font settings of the visible reader. The reader
+  // shows the resume page immediately; the badge fills in when the count lands.
+  // Re-runs on `recomputeToken` (layout-affecting settings / viewport changed).
   useEffect(() => {
-    if (!rendition) return;
+    if (!rendition || !data) return;
     let cancelled = false;
-    computingRef.current = true;
     setPageMapStatus("computing");
-    setComputeProgress({ done: 0, total: 0 });
 
-    buildPageMap(rendition, (done, total) => {
-      if (!cancelled) setComputeProgress({ done, total });
-    })
-      .then((map) => {
+    // Snapshot the live theme/font so the off-screen walk lays out identically
+    // to the visible reader — a width/font mismatch would make the counted
+    // total disagree with the on-screen pages (epub.js #274).
+    const { theme, fontSettings } = useReaderStore.getState();
+    const applyStyles = (r: Rendition) => {
+      const name = `reader-${theme}`;
+      r.themes.register(name, themeRules(theme, fontSettings.lineSpacing, fontSettings.margins));
+      r.themes.select(name);
+      r.themes.fontSize(`${fontSettings.size}px`);
+      r.themes.font(fontStackFor(fontSettings.family));
+    };
+
+    void (async () => {
+      // Wait for the visible column to settle before measuring against it.
+      const size = await settledStageSize(rendition);
+      if (cancelled) return;
+      try {
+        const map = await buildPageMapDetached(data, size, applyStyles);
         if (cancelled) return;
         pageMapRef.current = map;
         setPageMap(map);
         setPageMapStatus("ready");
-        // Seed the badge from the settled post-walk position.
+        // Seed the badge from the reader's current (unmoved) position.
         const loc = rendition.currentLocation() as unknown as LocationLike;
         setBookPage(bookPageFromLocation(loc, map));
-      })
-      .catch(() => {
-        if (!cancelled) setPageMapStatus("failed");
-      })
-      .finally(() => {
-        if (cancelled) return;
-        computingRef.current = false;
         refreshProgress(rendition);
-      });
+      } catch {
+        if (!cancelled) setPageMapStatus("failed");
+      }
+    })();
 
     return () => {
       cancelled = true;
-      computingRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rendition, recomputeToken]);
+  }, [rendition, data, recomputeToken]);
 
   // Recompute the page map when a layout-affecting setting settles (font size /
   // family / line-spacing / margins). Debounced so dragging a slider doesn't
@@ -216,10 +220,8 @@ export function EpubReader({ file }: { file: File }) {
     pageMapRef.current = null;
     setBookPage(null);
     setPageMapStatus("idle");
-    setComputeProgress({ done: 0, total: 0 });
     setRecomputeToken(0);
     settingsSettledRef.current = false;
-    computingRef.current = false;
     setBookTitle(null);
     setCurrentTocId(null);
     setChapterLabel(null);
@@ -227,8 +229,8 @@ export function EpubReader({ file }: { file: File }) {
     setLocationsReady(false);
     // Resume at the user's saved CFI (per-user, from the library) if there is
     // one, else start at the beginning. react-reader's controlled `location`
-    // prop then displays it, and the page-map precompute restores to it after
-    // its walk (buildPageMap restores the position it started from).
+    // prop displays it immediately; the background page-map build (off-screen,
+    // on a throwaway Book) never disturbs this position.
     const saved = useReaderStore.getState().initialLocation;
     setCurrentLocation(typeof saved === "string" ? saved : null);
     (async () => {
@@ -262,9 +264,6 @@ export function EpubReader({ file }: { file: File }) {
 
   const onLocationChanged = useCallback(
     (loc: string) => {
-      // Ignore relocations emitted by the precompute walk — they aren't the
-      // reader's real position and would fight react-reader's controlled prop.
-      if (computingRef.current) return;
       setCurrentLocation(loc);
       // The book PAGE number is updated by the single `relocated` handler
       // (below) from the authoritative event payload — not here, where we'd
@@ -302,7 +301,6 @@ export function EpubReader({ file }: { file: File }) {
   useEffect(() => {
     if (!rendition) return;
     const onRelocated = (loc: LocationLike) => {
-      if (computingRef.current) return;
       refreshProgress(rendition);
       const map = pageMapRef.current;
       if (map) setBookPage(bookPageFromLocation(loc, map));
@@ -570,15 +568,6 @@ export function EpubReader({ file }: { file: File }) {
     // (header/nav/rail/toolbar are `absolute` within it), which keeps them
     // clear of the sidebar without any transform on the epub iframe's ancestor.
     <div className="fixed inset-0 top-0 flex bg-reader-bg">
-      {/* Loading veil — covers the whole reader while the page map is being
-          computed (initial open or a layout-change recompute). The precompute
-          walk flips the rendition through every chapter underneath; this hides
-          that churn so the book isn't "rendered" to the user until pages are
-          counted (per the requested flow). */}
-      {pageMapStatus === "computing" && (
-        <PageComputingOverlay done={computeProgress.done} total={computeProgress.total} />
-      )}
-
       <TocSidebar
         open={tocSidebarOpen}
         entries={tocEntries}
@@ -775,41 +764,6 @@ export function EpubReader({ file }: { file: File }) {
 
 /** Loading = a page taking shape: faint prose-line bars in the same measure-
  * capped column the text will land in (no spinner, no "Loading…" string). */
-/**
- * Full-cover veil shown while the page map is being computed (research option
- * 3). Sits above the whole reader so the precompute walk isn't visible; shows a
- * spinner + a chapter progress readout so a long book doesn't look frozen.
- */
-function PageComputingOverlay({ done, total }: { done: number; total: number }) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-label="Preparing the book"
-      className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-reader-bg px-6 text-center"
-    >
-      <span
-        aria-hidden="true"
-        className="h-8 w-8 rounded-full border-2 border-reader-fg/15 border-t-reader-accent motion-safe:animate-spin"
-      />
-      <div className="flex flex-col gap-1.5">
-        <p className="font-display text-xl font-semibold text-reader-fg">Preparing your book</p>
-        <p className="text-sm text-reader-fg/60">
-          Counting pages{total > 0 ? ` — ${done}/${total} chapters` : "…"}
-        </p>
-      </div>
-      {/* Thin determinate bar in the accent — mirrors the cover progress bar. */}
-      <div className="h-0.5 w-56 max-w-[70vw] overflow-hidden rounded-full bg-reader-fg/10">
-        <div
-          className="h-full bg-reader-accent transition-[width] duration-200"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function SkeletonPage() {
   const widths = ["w-2/5", "w-full", "w-full", "w-11/12", "w-full", "w-4/5", "", "w-full", "w-full", "w-10/12", "w-full", "w-3/5"];
   return (
