@@ -15,6 +15,7 @@ import { useReaderStore } from "../../store/reader-store";
 import {
   HomeButton,
   PageNav,
+  PageJumpInput,
   ProgressRail,
   ReaderToolbar,
   SearchPanel,
@@ -110,6 +111,10 @@ export function EpubReader({ file }: { file: File }) {
   const [chapterLabel, setChapterLabel] = useState<string | null>(null);
   const [railTicks, setRailTicks] = useState<RailTick[]>([]);
   const [locationsReady, setLocationsReady] = useState(false);
+  // True while the "go to page" jump is stepping the rendition through pages, so
+  // the interim relocations it fires are ignored (not echoed into react-reader's
+  // controlled location, which would fight the walk). Reset when the walk ends.
+  const jumpSteppingRef = useRef(false);
   // Fades the column out during TOC/search/rail jumps (a leap shouldn't look
   // like a glitch); sequential page turns stay instant — reading is sacred.
   const [jumping, setJumping] = useState(false);
@@ -155,8 +160,19 @@ export function EpubReader({ file }: { file: File }) {
       // Wait for the visible column to settle before measuring against it.
       const size = await settledStageSize(rendition);
       if (cancelled) return;
+      // Read a FRESH ArrayBuffer from the File for the off-screen build — never
+      // reuse react-reader's `data` buffer: epub.js can detach it while we wait
+      // above, which would make the detached parse fail (blank "Page …" badge).
+      let bytes: ArrayBuffer;
       try {
-        const map = await buildPageMapDetached(data, size, applyStyles);
+        bytes = await file.arrayBuffer();
+      } catch {
+        if (!cancelled) setPageMapStatus("failed");
+        return;
+      }
+      if (cancelled) return;
+      try {
+        const map = await buildPageMapDetached(bytes, size, applyStyles);
         if (cancelled) return;
         pageMapRef.current = map;
         setPageMap(map);
@@ -227,6 +243,7 @@ export function EpubReader({ file }: { file: File }) {
     setChapterLabel(null);
     setRailTicks([]);
     setLocationsReady(false);
+    jumpSteppingRef.current = false;
     // Resume at the user's saved CFI (per-user, from the library) if there is
     // one, else start at the beginning. react-reader's controlled `location`
     // prop displays it immediately; the background page-map build (off-screen,
@@ -264,6 +281,10 @@ export function EpubReader({ file }: { file: File }) {
 
   const onLocationChanged = useCallback(
     (loc: string) => {
+      // Ignore relocations emitted while the page-jump walk is stepping — they
+      // aren't the reader's settled position and would fight the walk. The final
+      // position is written to the store when the walk ends.
+      if (jumpSteppingRef.current) return;
       setCurrentLocation(loc);
       // The book PAGE number is updated by the single `relocated` handler
       // (below) from the authoritative event payload — not here, where we'd
@@ -486,15 +507,73 @@ export function EpubReader({ file }: { file: File }) {
     [rendition, jumpTo],
   );
 
-  // Footer badge: accurate book-wide "Page N/total" from the page map, shown
-  // alongside the overall percentage. The map is ready before the reader is
-  // revealed (precompute behind the loading veil), so this is populated from
-  // the first frame.
-  const pageBadge =
-    bookPage != null && pageMap != null
-      ? `Page ${bookPage}/${pageMap.total}`
-      : null;
-  const percentBadge = percent != null ? `${percent}%` : null;
+  // Jump to a book-wide page number from the footer input. A reflowable book has
+  // no CFI per page — char-location interpolation lands many pages off — so the
+  // only way to hit the EXACT page is to paginate: display the target's spine
+  // section (page 1 of it), then step forward to the page within it. The page
+  // map counts pages the same way the live reader does, so `offset + stepped`
+  // equals the target exactly.
+  //
+  // The catch is that each `rendition.next()` emits a relocation, which react-
+  // reader would echo into its controlled `location` prop and re-display mid-
+  // walk, corrupting the position. `jumpSteppingRef` suppresses those interim
+  // relocations; we sync the store once to the settled spot at the end.
+  const jumpToBookPage = useCallback(
+    (page: number) => {
+      const map = pageMapRef.current;
+      const book = bookRef.current;
+      if (!map || !book || !rendition || jumpSteppingRef.current) return;
+      const target = Math.min(Math.max(page, 1), map.total);
+
+      // Spine index whose page range covers the target (offsets are prefix sums).
+      let idx = 0;
+      for (let i = 0; i < map.offsets.length; i++) {
+        const start = map.offsets[i];
+        const count = map.counts[i] ?? 0;
+        if (count > 0 && target > start && target <= start + count) {
+          idx = i;
+          break;
+        }
+      }
+      const pageInChapter = target - (map.offsets[idx] ?? 0); // 1-based
+
+      const spine = book.spine as unknown as {
+        get(target: number): { href?: string } | null;
+      };
+      const href = spine.get(idx)?.href;
+      if (!href) return;
+
+      setJumping(true);
+      jumpSteppingRef.current = true;
+      void (async () => {
+        try {
+          await rendition.display(href); // page 1 of the section
+          for (let k = 1; k < pageInChapter; k++) {
+            await rendition.next();
+          }
+        } catch {
+          /* jump is best-effort */
+        } finally {
+          jumpSteppingRef.current = false;
+          // Sync the store + badge once to where we actually settled.
+          try {
+            const settled = rendition.currentLocation() as unknown as LocationLike & {
+              start?: { cfi?: string };
+            };
+            const cfi = settled?.start?.cfi;
+            if (cfi) setCurrentLocation(cfi);
+            const m = pageMapRef.current;
+            if (m) setBookPage(bookPageFromLocation(settled, m));
+            refreshProgress(rendition);
+          } catch {
+            /* settle read is best-effort */
+          }
+          requestAnimationFrame(() => setJumping(false));
+        }
+      })();
+    },
+    [rendition, setCurrentLocation, refreshProgress],
+  );
 
   // Secondary action: export this EPUB as a PDF (server round-trip through
   // Calibre). Hidden for now — reading is the whole product (see the toolbar
@@ -700,25 +779,22 @@ export function EpubReader({ file }: { file: File }) {
             />
           }
           rightControls={
-            <button
-              type="button"
-              onClick={toggleTocSidebar}
-              title={tocSidebarOpen ? "Hide contents" : "Show contents"}
-              aria-label={tocSidebarOpen ? "Hide contents" : "Show contents"}
-              aria-pressed={tocSidebarOpen}
-              className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-reader-fg/80 transition hover:bg-reader-bg"
-            >
+            // Chapter label stays a passive hint (the contents TOGGLE lives in
+            // the format controls); the page number is now an editable jump
+            // field. Chapter label hides on narrow bars so the input has room.
+            <div className="flex min-w-0 items-center gap-2">
               {chapterLabel && (
-                <span className="min-w-0 truncate text-xs text-reader-fg/70">
+                <span className="hidden min-w-0 max-w-[9rem] truncate text-xs text-reader-fg/60 md:inline">
                   {chapterLabel}
                 </span>
               )}
-              {(pageBadge || percentBadge) && (
-                <span className="shrink-0 rounded bg-reader-surface px-1.5 py-0.5 text-xs tabular-nums text-reader-fg/70">
-                  {[pageBadge, percentBadge].filter(Boolean).join(" · ")}
-                </span>
-              )}
-            </button>
+              <PageJumpInput
+                current={bookPage}
+                total={pageMap?.total ?? null}
+                onJump={jumpToBookPage}
+                percent={percent}
+              />
+            </div>
           }
         />
       </div>

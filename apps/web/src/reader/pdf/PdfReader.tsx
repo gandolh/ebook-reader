@@ -15,7 +15,7 @@ import { useReaderStore } from "../../store/reader-store";
 import {
   HomeButton,
   PageNav,
-  ProgressIndicator,
+  PageJumpInput,
   ProgressRail,
   ReaderToolbar,
   SearchPanel,
@@ -322,7 +322,12 @@ export function PdfReader({ file }: { file: File }) {
         }
         rightControls={
           <>
-            <ProgressIndicator current={currentPage} total={numPages} />
+            <PageJumpInput
+              current={currentPage}
+              total={numPages}
+              onJump={goToPage}
+              percent={numPages ? Math.round((currentPage / numPages) * 100) : null}
+            />
             <SettingsPopover
               title="Reader settings"
               trigger={
