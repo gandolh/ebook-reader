@@ -125,7 +125,7 @@ export function EpubReader({ file }: { file: File }) {
 
   // Shared chrome behaviors.
   useApplyTheme();
-  const revealChrome = useAutoHideChrome();
+  useAutoHideChrome(); // now only guarantees the bars are visible on mount
   // Theme + font settings applied to the reflowable rendition (real theming).
   // Declared BEFORE the precompute effect so its effect runs first — the page
   // walk must measure with the active font, not the default.
@@ -204,24 +204,6 @@ export function EpubReader({ file }: { file: File }) {
     };
   }, [pageMapStatus]);
 
-  // The book renders in an iframe whose input events do NOT bubble to the
-  // parent window, so the auto-hide chrome would never reveal while the
-  // pointer is over the page. epub.js re-emits the iframe's DOM events on the
-  // rendition — forward them to the shared reveal.
-  useEffect(() => {
-    if (!rendition) return;
-    const forward = () => revealChrome();
-    rendition.on("mousemove", forward);
-    rendition.on("click", forward);
-    rendition.on("keydown", forward);
-    rendition.on("touchstart", forward);
-    return () => {
-      rendition.off("mousemove", forward);
-      rendition.off("click", forward);
-      rendition.off("keydown", forward);
-      rendition.off("touchstart", forward);
-    };
-  }, [rendition, revealChrome]);
 
   // Read the File into an ArrayBuffer once per file.
   useEffect(() => {
@@ -562,6 +544,12 @@ export function EpubReader({ file }: { file: File }) {
         // laggy easing to resizes.
         transition: "none",
       },
+      // react-reader insets the epub view by top:50/left:50/right:50/bottom:20
+      // to make room for ITS arrows + title — all of which we hide. Zero the
+      // inset so the page fills the column; the readable margin then comes from
+      // the column's padding (vertical) + the epub body's own margin (`Aa`
+      // setting, horizontal).
+      reader: { ...ReactReaderStyle.reader, top: 0, left: 0, right: 0, bottom: 0 },
     }),
     [],
   );
@@ -594,12 +582,16 @@ export function EpubReader({ file }: { file: File }) {
         currentId={currentTocId}
       />
 
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Running header — orientation at the edge, fades with the chrome. The
-            column below reserves this space (pt), so text is never covered. */}
+      {/* Reading pane as a 3-row grid: top bar / content / bottom bar. The bars
+          are in-flow rows, so paginated content can never render under them
+          (no more overlay + padding hack), and the content row (1fr) simply
+          takes the space between. */}
+      <div className="relative grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto] overflow-hidden">
+        {/* Row 1: top bar — running orientation (title / chapter). In-flow now;
+            fades with the chrome but keeps its row so content stays put. */}
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-baseline justify-between gap-6 px-6 py-2.5 text-xs text-reader-fg/50 transition-opacity duration-300 ${
+          className={`pointer-events-none flex items-baseline justify-between gap-6 px-6 py-2.5 text-xs text-reader-fg/50 transition-opacity duration-300 ${
             chromeVisible ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -607,12 +599,17 @@ export function EpubReader({ file }: { file: File }) {
           <span className="min-w-0 truncate text-right">{chapterLabel ?? ""}</span>
         </div>
 
-        <div className="relative flex-1 overflow-hidden">
+        {/* Row 2: content. min-h-0 + min-w-0 let the 1fr row shrink in BOTH
+            axes, so the very wide epub iframe (all pages laid out as columns)
+            can't blow the grid column out past the viewport — it's clipped
+            here instead of widening the pane and the bars. */}
+        <div className="relative min-h-0 min-w-0 overflow-hidden">
         {/* One centered, measure-capped column — the page is the interface.
             `relative` is load-bearing: react-reader positions its reader area
             absolutely, and it must anchor to THIS capped box, not the
-            full-width container. */}
-        <div className="relative mx-auto h-full w-full max-w-2xl pb-5 pt-9">
+            full-width container. A wide cap + minimal padding lets the page
+            fill the space (epub's own margins still keep the text readable). */}
+        <div className="relative mx-auto h-full w-full max-w-4xl px-2 py-5">
           <ReactReader
             url={data}
             // Before we have a CFI, start at spine index 0. Never let
@@ -645,9 +642,10 @@ export function EpubReader({ file }: { file: File }) {
             }`}
           />
         </div>
-      </div>
-
-        <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext />
+          {/* Page-turn tap zones — scoped to the content row so they cover only
+              the reading area, not the bars. */}
+          <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext />
+        </div>
 
         <ProgressRail
           percent={percent ?? 0}
@@ -714,7 +712,7 @@ export function EpubReader({ file }: { file: File }) {
               title={tocSidebarOpen ? "Hide contents" : "Show contents"}
               aria-label={tocSidebarOpen ? "Hide contents" : "Show contents"}
               aria-pressed={tocSidebarOpen}
-              className="flex max-w-64 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-reader-fg/80 transition hover:bg-reader-bg"
+              className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-reader-fg/80 transition hover:bg-reader-bg"
             >
               {chapterLabel && (
                 <span className="min-w-0 truncate text-xs text-reader-fg/70">

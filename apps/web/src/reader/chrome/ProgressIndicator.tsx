@@ -23,9 +23,9 @@ export function ProgressIndicator({
   const percent = total && total > 0 ? Math.round((current / total) * 100) : null;
 
   return (
-    <div className="flex items-center gap-2 text-sm text-reader-fg/80" aria-live="polite">
+    <div className="flex shrink-0 items-center gap-2 text-sm text-reader-fg/80" aria-live="polite">
       {variant === "pages" && (
-        <span className="tabular-nums">
+        <span className="whitespace-nowrap tabular-nums">
           {unitLabel} {current}
           {total !== null ? ` / ${total}` : ""}
         </span>

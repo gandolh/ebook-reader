@@ -10,7 +10,10 @@ export interface RailTick {
  * Scrubbable reading-progress rail (the reader's one moment of delight), shared
  * by both readers (brief 08 — formerly EPUB-only). A hairline strip along the
  * very bottom edge: accent-filled to the current position, faint ticks at
- * chapter boundaries. Hovering reveals the chapter under the pointer; clicking,
+ * chapter boundaries, and a small accent **knob** at the current spot so the
+ * strip reads as a grabbable handle rather than decor (the hit area is a
+ * taller-than-visible 24px band). Hovering reveals the chapter under the
+ * pointer; clicking,
  * dragging (pointer capture — mouse or touch), or arrow keys when focused jump
  * there. While dragging, the fill and tooltip preview the grab position; the
  * seek commits ONCE on release (a live seek per pointermove would thrash the
@@ -99,7 +102,9 @@ export function ProgressRail({
         aria-valuenow={Math.round(shownPct)}
         tabIndex={0}
         // touch-none: a touch drag scrubs the rail, never scrolls the page.
-        className="group relative h-4 cursor-pointer touch-none outline-none"
+        // Taller hit area (h-6) + grab cursor so the hairline is actually
+        // catchable and reads as draggable (was a 16px band, easy to miss).
+        className="group relative h-6 cursor-grab touch-none outline-none active:cursor-grabbing"
         onPointerDown={(e) => {
           // Left button only for mice; any contact for touch/pen.
           if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -142,8 +147,8 @@ export function ProgressRail({
         }}
       >
         <div
-          className={`absolute inset-x-0 bottom-0 bg-reader-border/60 transition-all duration-150 group-hover:h-[6px] group-focus-visible:h-[6px] group-focus-visible:ring-1 group-focus-visible:ring-reader-accent ${
-            dragging ? "h-[6px]" : "h-[3px]"
+          className={`absolute inset-x-0 bottom-0 bg-reader-border/60 transition-all duration-150 group-hover:h-[8px] group-focus-visible:h-[8px] group-focus-visible:ring-1 group-focus-visible:ring-reader-accent ${
+            dragging ? "h-[8px]" : "h-[4px]"
           }`}
         >
           <div
@@ -158,6 +163,19 @@ export function ProgressRail({
             />
           ))}
         </div>
+
+        {/* Draggable knob at the current position — the affordance that says
+            "grab me here". Sits ON the bottom line and rises upward (never
+            below the screen edge), always visible while the rail is shown and
+            growing on hover/drag. `clamp` keeps the 12px dot fully on-screen at
+            0% / 100% instead of half-clipping past the edge. */}
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute bottom-0 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-reader-surface bg-reader-accent shadow transition-transform duration-150 group-hover:scale-110 group-focus-visible:scale-110 ${
+            dragging ? "scale-125" : ""
+          }`}
+          style={{ left: `clamp(6px, ${shownPct}%, calc(100% - 6px))` }}
+        />
       </div>
     </div>
   );

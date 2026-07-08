@@ -25,6 +25,15 @@ const THEME_COLORS: Record<Theme, { bg: string; fg: string; link: string }> = {
 function themeRules(theme: Theme, lineSpacing: number, margins: number) {
   const c = THEME_COLORS[theme];
   return {
+    // iOS Safari auto-inflates text sized against a block's width. epub.js lays
+    // every page out as columns inside ONE very wide iframe (thousands of px),
+    // so iOS massively inflates the font → lines overflow the visible column
+    // and get clipped on the right (only on real iPhones, not desktop/WebKit).
+    // Pin text-size-adjust to 100% on the root to disable that inflation.
+    "html, body": {
+      "-webkit-text-size-adjust": "100% !important",
+      "text-size-adjust": "100% !important",
+    },
     body: {
       background: `${c.bg} !important`,
       color: `${c.fg} !important`,
