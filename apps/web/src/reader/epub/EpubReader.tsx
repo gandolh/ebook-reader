@@ -225,7 +225,12 @@ export function EpubReader({ file }: { file: File }) {
     setChapterLabel(null);
     setRailTicks([]);
     setLocationsReady(false);
-    setCurrentLocation(null);
+    // Resume at the user's saved CFI (per-user, from the library) if there is
+    // one, else start at the beginning. react-reader's controlled `location`
+    // prop then displays it, and the page-map precompute restores to it after
+    // its walk (buildPageMap restores the position it started from).
+    const saved = useReaderStore.getState().initialLocation;
+    setCurrentLocation(typeof saved === "string" ? saved : null);
     (async () => {
       const buf = await file.arrayBuffer();
       if (!cancelled) setData(buf);

@@ -28,6 +28,19 @@ export interface HydrateState {
   retry: () => void;
 }
 
+/**
+ * Decode the wire `locator` into a typed `ReaderLocation` for the store: a page
+ * number for PDF, the CFI string for EPUB. `null`/unparseable → start fresh.
+ */
+function resumeLocation(locator: string | null, format: LibraryBook["format"]): number | string | null {
+  if (!locator) return null;
+  if (format === "pdf") {
+    const page = Number(locator);
+    return Number.isFinite(page) && page >= 1 ? page : null;
+  }
+  return locator;
+}
+
 export function useHydrateBook(bookId: string | undefined): HydrateState {
   const loadedFile = useReaderStore((s) => s.loadedFile);
   const loadedBookId = useReaderStore((s) => s.loadedBookId);
@@ -74,11 +87,14 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
     let cancelled = false;
     setStatus("loading");
     setProgress(found.sizeBytes > 0 ? 0 : null);
+    // The saved resume position is an opaque locator on the wire: a page number
+    // (string) for PDF, a CFI for EPUB. Type it for the reader's ReaderLocation.
+    const initialLocation = resumeLocation(found.locator, found.format);
     fetchBookFile(found, (fraction) => {
       if (!cancelled) setProgress(fraction);
     })
       .then((file) => {
-        if (!cancelled) setLoadedBook(file, found.format, found.id);
+        if (!cancelled) setLoadedBook(file, found.format, found.id, initialLocation);
       })
       .catch(() => {
         if (!cancelled) {

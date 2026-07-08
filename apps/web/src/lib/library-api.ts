@@ -31,12 +31,19 @@ export async function deleteBook(id: string): Promise<void> {
   await apiFetch(`/library/${id}`, { method: "DELETE" });
 }
 
-/** `PATCH /library/:id/progress`. */
-export async function updateProgress(id: string, progress: number): Promise<void> {
+/**
+ * `PATCH /library/:id/progress` — persist the current user's progress (0..1)
+ * and, when known, their exact resume `locator` (page number / CFI).
+ */
+export async function updateProgress(
+  id: string,
+  progress: number,
+  locator?: string | null,
+): Promise<void> {
   await apiFetch(`/library/${id}/progress`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ progress }),
+    body: JSON.stringify({ progress, locator: locator ?? null }),
   });
 }
 

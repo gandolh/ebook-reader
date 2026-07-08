@@ -16,11 +16,13 @@ import { LIBRARY_FILES_DIR, MAX_UPLOAD_BYTES, THUMBNAILS_DIR } from "./config.js
 import {
   deleteBook,
   getBook,
+  getUserProgress,
   insertBook,
   listBooks,
-  setProgress,
+  listUserProgress,
   toLibraryBook,
   touchOpened,
+  upsertUserProgress,
 } from "./db.js";
 import { extractMeta } from "./extract.js";
 
@@ -112,10 +114,20 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
 
   // --- GET /library — the gallery list ---------------------------------------
   app.get("/library", async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.authUser;
+    if (!user) return reply.status(401).send({ error: "UNAUTHORIZED" });
     const sort = librarySortSchema.catch("recent").parse(
       (request.query as { sort?: string } | undefined)?.sort,
     );
-    return reply.send(listBooks(sort).map(toLibraryBook));
+    // Progress/locator are per-user; fetch this user's rows once and merge.
+    const progressByBook = new Map(
+      listUserProgress(user.id).map((p) => [p.book_id, p]),
+    );
+    return reply.send(
+      listBooks(sort).map((row) =>
+        toLibraryBook(row, progressByBook.get(row.id) ?? { progress: 0, locator: null }),
+      ),
+    );
   });
 
   // --- GET /library/:id/file — stream the original for the reader ------------
@@ -142,8 +154,10 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     return reply.send(createReadStream(row.cover_path));
   });
 
-  // --- PATCH /library/:id/progress -------------------------------------------
+  // --- PATCH /library/:id/progress — save THIS user's progress + position ----
   app.patch("/library/:id/progress", async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.authUser;
+    if (!user) return reply.status(401).send({ error: "UNAUTHORIZED" });
     const { id } = request.params as { id: string };
     const row = getBook(id);
     if (!row) return reply.status(404).send({ error: "Book not found." });
@@ -152,8 +166,8 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     if (!parsed.success) {
       return reply.status(400).send({ error: "progress must be a number in [0, 1]." });
     }
-    setProgress(id, parsed.data.progress, nowIso());
-    return reply.send(toLibraryBook(getBook(id)!));
+    upsertUserProgress(user.id, id, parsed.data.progress, parsed.data.locator ?? null, nowIso());
+    return reply.send(toLibraryBook(row, getUserProgress(user.id, id)));
   });
 
   // --- DELETE /library/:id — remove row + file + thumbnail -------------------

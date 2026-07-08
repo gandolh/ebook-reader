@@ -62,6 +62,13 @@ export interface ReaderState {
    */
   loadedBookId: string | null;
   /**
+   * The saved resume position for the loaded book (from the server, per-user),
+   * for the mounted reader to seed its starting location: a page number for
+   * PDF, a CFI string for EPUB. `null` = start from the beginning (fresh book,
+   * dev sample, or never opened). Set by hydration alongside `loadedFile`.
+   */
+  initialLocation: ReaderLocation;
+  /**
    * Coarse reading progress, 0..1, reported by whichever reader is mounted
    * (PDF = page/total; EPUB = locations percentage). Consumed by the library
    * progress-sync hook to PATCH the server (D24). `null` before it's known.
@@ -88,8 +95,16 @@ export interface ReaderState {
   toggleTocSidebar: () => void;
   /** Stash the picked file + its detected format for `/read` to pick up. */
   setLoadedFile: (file: File | null, format: Format | null) => void;
-  /** Like `setLoadedFile`, but also records the library book id (D24). */
-  setLoadedBook: (file: File, format: Format, bookId: string) => void;
+  /**
+   * Like `setLoadedFile`, but also records the library book id (D24) and the
+   * user's saved resume position (`initialLocation`) for the reader to restore.
+   */
+  setLoadedBook: (
+    file: File,
+    format: Format,
+    bookId: string,
+    initialLocation?: ReaderLocation,
+  ) => void;
   /** Report coarse reading progress (0..1) from the active reader. */
   setProgressFraction: (fraction: number | null) => void;
   /** Set the PDF zoom scale (brief 06). Clamped by the caller. */
@@ -136,6 +151,7 @@ const initialState = {
   loadedFile: null as File | null,
   loadedFormat: null as Format | null,
   loadedBookId: null as string | null,
+  initialLocation: null as ReaderLocation,
   progressFraction: null as number | null,
   zoom: 1,
 };
@@ -166,9 +182,9 @@ export const useReaderStore = create<ReaderState>((set) => ({
       return { tocSidebarOpen };
     }),
   setLoadedFile: (loadedFile, loadedFormat) =>
-    set({ loadedFile, loadedFormat, loadedBookId: null }),
-  setLoadedBook: (loadedFile, loadedFormat, loadedBookId) =>
-    set({ loadedFile, loadedFormat, loadedBookId, progressFraction: null }),
+    set({ loadedFile, loadedFormat, loadedBookId: null, initialLocation: null }),
+  setLoadedBook: (loadedFile, loadedFormat, loadedBookId, initialLocation = null) =>
+    set({ loadedFile, loadedFormat, loadedBookId, initialLocation, progressFraction: null }),
   setProgressFraction: (progressFraction) => set({ progressFraction }),
   setZoom: (zoom) => set({ zoom }),
   reset: () => set(initialState),

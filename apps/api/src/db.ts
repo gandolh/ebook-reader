@@ -41,6 +41,18 @@ export interface SessionUser {
   username: string;
 }
 
+/**
+ * One user's reading state for one book. Progress + resume position are
+ * per-user (the library is shared, the place you're at is not).
+ */
+export interface UserProgressRow {
+  book_id: string;
+  /** 0..1, drives the cover progress bar. */
+  progress: number;
+  /** Opaque resume position: PDF page number (string) or EPUB CFI; null if unset. */
+  locator: string | null;
+}
+
 mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
@@ -74,6 +86,18 @@ db.exec(`
     user_id       TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at    TEXT    NOT NULL
   );
+
+  -- Per-user reading state (progress + exact resume position). One row per
+  -- (user, book); the book itself is shared. Cascades away with the user or
+  -- the book.
+  CREATE TABLE IF NOT EXISTS reading_progress (
+    user_id       TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id       TEXT    NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    progress      REAL    NOT NULL DEFAULT 0,
+    locator       TEXT,
+    updated_at    TEXT    NOT NULL,
+    PRIMARY KEY (user_id, book_id)
+  );
 `);
 // Enforce the sessions→users foreign key (off by default in SQLite).
 db.pragma("foreign_keys = ON");
@@ -92,9 +116,6 @@ const statements = {
   listByTitle: db.prepare("SELECT * FROM books ORDER BY title COLLATE NOCASE ASC"),
   listByAuthor: db.prepare(
     "SELECT * FROM books ORDER BY author COLLATE NOCASE ASC, title COLLATE NOCASE ASC",
-  ),
-  setProgress: db.prepare<[number, string, string]>(
-    "UPDATE books SET progress = ?, last_opened_at = ? WHERE id = ?",
   ),
   touchOpened: db.prepare<[string, string]>(
     "UPDATE books SET last_opened_at = ? WHERE id = ?",
@@ -119,10 +140,35 @@ const statements = {
       WHERE s.token = ?`,
   ),
   deleteSession: db.prepare<[string]>("DELETE FROM sessions WHERE token = ?"),
+
+  // --- Per-user reading progress -------------------------------------------
+  listUserProgress: db.prepare<[string]>(
+    "SELECT book_id, progress, locator FROM reading_progress WHERE user_id = ?",
+  ),
+  getUserProgress: db.prepare<[string, string]>(
+    "SELECT book_id, progress, locator FROM reading_progress WHERE user_id = ? AND book_id = ?",
+  ),
+  // COALESCE keeps a previously-saved locator when a progress-only update sends
+  // null, so a bar refresh can't wipe the resume position.
+  upsertUserProgress: db.prepare<[string, string, number, string | null, string]>(`
+    INSERT INTO reading_progress (user_id, book_id, progress, locator, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, book_id) DO UPDATE SET
+      progress = excluded.progress,
+      locator = COALESCE(excluded.locator, reading_progress.locator),
+      updated_at = excluded.updated_at
+  `),
 };
 
-/** Map a DB row to the wire shape (strips on-disk paths; D25). */
-export function toLibraryBook(row: BookRow): LibraryBook {
+/**
+ * Map a DB row to the wire shape (strips on-disk paths; D25). Progress + the
+ * resume locator are per-user, so they're passed in (from the caller's
+ * `reading_progress` lookup); absent = the user hasn't opened this book yet.
+ */
+export function toLibraryBook(
+  row: BookRow,
+  progress: Pick<UserProgressRow, "progress" | "locator"> = { progress: 0, locator: null },
+): LibraryBook {
   return {
     id: row.id,
     title: row.title,
@@ -130,7 +176,8 @@ export function toLibraryBook(row: BookRow): LibraryBook {
     format: row.format,
     hasCover: row.cover_path !== null,
     sizeBytes: row.size_bytes,
-    progress: row.progress,
+    progress: progress.progress,
+    locator: progress.locator,
     createdAt: row.created_at,
     lastOpenedAt: row.last_opened_at,
   };
@@ -152,10 +199,6 @@ export function listBooks(sort: LibrarySort): BookRow[] {
         ? statements.listByAuthor
         : statements.listRecent;
   return stmt.all() as BookRow[];
-}
-
-export function setProgress(id: string, progress: number, now: string): void {
-  statements.setProgress.run(progress, now, id);
 }
 
 export function touchOpened(id: string, now: string): void {
@@ -191,4 +234,30 @@ export function getSessionUser(token: string): SessionUser | undefined {
 
 export function deleteSession(token: string): void {
   statements.deleteSession.run(token);
+}
+
+// --- Per-user reading progress -----------------------------------------------
+
+/** All of a user's reading-progress rows (for merging into the library list). */
+export function listUserProgress(userId: string): UserProgressRow[] {
+  return statements.listUserProgress.all(userId) as UserProgressRow[];
+}
+
+/** One user's progress for one book, or undefined if they haven't opened it. */
+export function getUserProgress(userId: string, bookId: string): UserProgressRow | undefined {
+  return statements.getUserProgress.get(userId, bookId) as UserProgressRow | undefined;
+}
+
+/**
+ * Save a user's progress + resume position for a book. A null `locator` leaves
+ * any previously-saved position intact (see the COALESCE in the statement).
+ */
+export function upsertUserProgress(
+  userId: string,
+  bookId: string,
+  progress: number,
+  locator: string | null,
+  now: string,
+): void {
+  statements.upsertUserProgress.run(userId, bookId, progress, locator, now);
 }

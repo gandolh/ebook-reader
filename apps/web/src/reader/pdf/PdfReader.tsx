@@ -81,10 +81,19 @@ export function PdfReader({ file }: { file: File }) {
   useApplyTheme();
   useAutoHideChrome();
 
-  // Start on page 1 when a new document mounts.
+  // On mount, resume at the user's saved page (from the library, per-user) or
+  // page 1 for a fresh/never-opened book. Read from the store at effect time so
+  // this doesn't re-run when the saved value changes independently of `file`.
   useEffect(() => {
-    setCurrentLocation(1);
+    const saved = useReaderStore.getState().initialLocation;
+    setCurrentLocation(typeof saved === "number" && saved >= 1 ? saved : 1);
   }, [file, setCurrentLocation]);
+
+  // Once the page count is known, clamp a saved page that overshoots the book
+  // (e.g. the file changed) so react-pdf never tries to render a missing page.
+  useEffect(() => {
+    if (numPages && currentPage > numPages) setCurrentLocation(numPages);
+  }, [numPages, currentPage, setCurrentLocation]);
 
   // Report coarse progress (page / total) for the library sync hook (D24).
   useEffect(() => {

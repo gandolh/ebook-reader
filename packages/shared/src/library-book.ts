@@ -26,11 +26,18 @@ export const libraryBookSchema = z.object({
   /** Original file size in bytes. */
   sizeBytes: z.number().int().nonnegative(),
   /**
-   * Reading progress, 0..1. Persisted per D24 (distinct from the session-only
-   * reading *position* in Zustand, D9 — this is the coarse "how far in" used
-   * for the cover's progress bar).
+   * Reading progress, 0..1, for the CURRENT user (progress is per-user; the
+   * library itself is shared). Drives the cover's progress bar — the coarse
+   * "how far in", distinct from the exact resume position in `locator`.
    */
   progress: z.number().min(0).max(1),
+  /**
+   * The current user's exact resume position, or null if they haven't opened
+   * the book. Opaque locator: a page number (as a string) for PDF, an epub.js
+   * CFI for EPUB. The reader seeds its starting position from this so a refresh
+   * / reopen lands back where the user left off.
+   */
+  locator: z.string().nullable(),
   /** ISO timestamp the book was added. */
   createdAt: z.string(),
   /** ISO timestamp the book was last opened, or null if never opened. */
@@ -44,6 +51,9 @@ export const libraryListSchema = z.array(libraryBookSchema);
 /** `PATCH /library/:id/progress` request body. */
 export const updateProgressSchema = z.object({
   progress: z.number().min(0).max(1),
+  /** Exact resume position (see `LibraryBook.locator`). Omitted/null leaves the
+   * stored locator untouched. */
+  locator: z.string().min(1).nullish(),
 });
 export type UpdateProgressRequest = z.infer<typeof updateProgressSchema>;
 
