@@ -24,6 +24,23 @@ export interface BookRow {
   last_opened_at: string | null;
 }
 
+/**
+ * A user account. Accounts are operator-seeded (no self-registration); the
+ * library is shared across all of them, so there is no per-book ownership.
+ */
+export interface UserRow {
+  id: string;
+  username: string;
+  password_hash: string;
+  created_at: string;
+}
+
+/** The identity attached to an authenticated request. */
+export interface SessionUser {
+  id: string;
+  username: string;
+}
+
 mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
@@ -42,7 +59,24 @@ db.exec(`
     created_at    TEXT    NOT NULL,
     last_opened_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id            TEXT    PRIMARY KEY,
+    username      TEXT    NOT NULL UNIQUE,
+    password_hash TEXT    NOT NULL,
+    created_at    TEXT    NOT NULL
+  );
+
+  -- Opaque login sessions: a random token maps to a user. Rows are removed
+  -- (ON DELETE CASCADE) if the user is ever deleted.
+  CREATE TABLE IF NOT EXISTS sessions (
+    token         TEXT    PRIMARY KEY,
+    user_id       TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at    TEXT    NOT NULL
+  );
 `);
+// Enforce the sessions→users foreign key (off by default in SQLite).
+db.pragma("foreign_keys = ON");
 
 const statements = {
   insert: db.prepare<BookRow>(`
@@ -66,6 +100,25 @@ const statements = {
     "UPDATE books SET last_opened_at = ? WHERE id = ?",
   ),
   remove: db.prepare<[string]>("DELETE FROM books WHERE id = ?"),
+
+  // --- Users ---------------------------------------------------------------
+  getUserByName: db.prepare<[string]>("SELECT * FROM users WHERE username = ?"),
+  upsertUser: db.prepare<UserRow>(`
+    INSERT INTO users (id, username, password_hash, created_at)
+    VALUES (@id, @username, @password_hash, @created_at)
+    ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash
+  `),
+
+  // --- Sessions ------------------------------------------------------------
+  createSession: db.prepare<[string, string, string]>(
+    "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
+  ),
+  sessionUser: db.prepare<[string]>(
+    `SELECT u.id AS id, u.username AS username
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token = ?`,
+  ),
+  deleteSession: db.prepare<[string]>("DELETE FROM sessions WHERE token = ?"),
 };
 
 /** Map a DB row to the wire shape (strips on-disk paths; D25). */
@@ -111,4 +164,31 @@ export function touchOpened(id: string, now: string): void {
 
 export function deleteBook(id: string): void {
   statements.remove.run(id);
+}
+
+// --- Users & sessions --------------------------------------------------------
+
+export function getUserByName(username: string): UserRow | undefined {
+  return statements.getUserByName.get(username) as UserRow | undefined;
+}
+
+/**
+ * Insert a user, or update the password of an existing one (matched by
+ * username). Used by the operator seed script; re-running it is idempotent.
+ */
+export function upsertUser(row: UserRow): void {
+  statements.upsertUser.run(row);
+}
+
+export function createSession(token: string, userId: string, now: string): void {
+  statements.createSession.run(token, userId, now);
+}
+
+/** Resolve a session token to its user, or undefined if the token is unknown. */
+export function getSessionUser(token: string): SessionUser | undefined {
+  return statements.sessionUser.get(token) as SessionUser | undefined;
+}
+
+export function deleteSession(token: string): void {
+  statements.deleteSession.run(token);
 }

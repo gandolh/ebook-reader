@@ -8,9 +8,9 @@ import { maxUploadBytesFromMb } from "@ebook-reader/shared";
  * Runtime configuration, resolved once from the environment and validated at
  * import time. Unlike the previous "safe defaults" scheme, every variable in
  * the .env contract is now REQUIRED — a missing or malformed value aborts
- * startup with a clear message instead of silently falling back (so e.g. the
- * platform password can never be accidentally left unset, leaving the API
- * open). See .env.example for the full contract.
+ * startup with a clear message instead of silently falling back. See
+ * .env.example for the full contract. (User accounts are NOT configured here —
+ * they live in the DB and are created by scripts/seed.ts.)
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url)); // apps/api/src (or dist)
@@ -37,7 +37,6 @@ if (existsSync(ENV_FILE)) {
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive(),
   HOST: z.string().min(1),
-  APP_PASSWORD: z.string().min(1),
   MAX_UPLOAD_MB: z.coerce.number().positive(),
   CONVERT_TIMEOUT_MS: z.coerce.number().int().positive(),
 });
@@ -63,13 +62,6 @@ const env = parsed.data;
 
 export const PORT = env.PORT;
 export const HOST = env.HOST;
-
-/**
- * Shared platform password (brief 09). Now always a non-empty string — the
- * schema above rejects an unset/blank value, so the API can no longer boot in
- * the old "open" mode.
- */
-export const APP_PASSWORD = env.APP_PASSWORD;
 
 export const MAX_UPLOAD_MB = env.MAX_UPLOAD_MB;
 export const MAX_UPLOAD_BYTES = maxUploadBytesFromMb(MAX_UPLOAD_MB);

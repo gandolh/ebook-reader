@@ -45,3 +45,6 @@ testing_files/
 apps/api/data/
 apps/api/library/
 apps/api/images/
+
+# Account seed — holds real credentials (copy from seed.example.ts)
+apps/api/scripts/seed.ts

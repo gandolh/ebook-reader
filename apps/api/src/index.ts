@@ -2,11 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { isCalibreAvailable } from "./calibre.js";
-import {
-  registerAuthGuard,
-  registerAuthRoutes,
-  isAuthEnabled,
-} from "./auth.js";
+import { registerAuthGuard, registerAuthRoutes } from "./auth.js";
 import {
   CONVERT_TIMEOUT_MS,
   HOST,
@@ -50,8 +46,8 @@ await app.register(multipart, {
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
 });
 
-// Platform-password guard (brief 09). Registered app-wide BEFORE the routes so
-// every non-allowlisted request is gated. No-op when APP_PASSWORD is unset.
+// Per-user session guard. Registered app-wide BEFORE the routes so every
+// non-allowlisted request must present a valid session token.
 registerAuthGuard(app);
 
 app.get("/health", async () => {
@@ -84,24 +80,9 @@ async function checkCalibre(): Promise<void> {
   );
 }
 
-/**
- * Startup check for the platform password (brief 09). `APP_PASSWORD` is now a
- * required, validated env var (see config.ts), so auth is always enabled by the
- * time we get here — this is just a confirming log. `isAuthEnabled` is kept as
- * defence-in-depth in auth.ts should that invariant ever change.
- */
-function checkAppPassword(): void {
-  if (!isAuthEnabled) {
-    // Should be unreachable: config.ts aborts startup when APP_PASSWORD is unset.
-    throw new Error("APP_PASSWORD is not configured — refusing to start.");
-  }
-  app.log.info("APP_PASSWORD is set — platform password auth enabled.");
-}
-
 async function start(): Promise<void> {
   try {
     await checkCalibre();
-    checkAppPassword();
     await app.listen({ port: PORT, host: HOST });
     app.log.info(
       { maxUploadMb: MAX_UPLOAD_MB, convertTimeoutMs: CONVERT_TIMEOUT_MS },

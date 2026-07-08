@@ -1,36 +1,41 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   authStatusSchema,
   loginRequestSchema,
   loginResponseSchema,
 } from "@ebook-reader/shared";
-import { APP_PASSWORD } from "./config.js";
+import {
+  createSession,
+  deleteSession,
+  getSessionUser,
+  getUserByName,
+  type SessionUser,
+} from "./db.js";
+import { verifyPassword } from "./password.js";
 
 /**
- * Platform-password auth (brief 09). A single shared password gates the whole
- * API. The token is stateless: `sha256hex(APP_PASSWORD)`. Clients present it as
- * `Authorization: Bearer <token>` or `?token=<token>` (cover <img> tags can't
- * send headers). When APP_PASSWORD is unset the guard is a no-op — the API is
- * open — and /auth/status reports `required: false`.
+ * Per-user auth. Accounts are operator-seeded (no self-registration — see
+ * scripts/seed.ts); the library is shared across all users. Login trades a
+ * username + password for an opaque, server-stored session token
+ * (`sessions` table). Clients present it as `Authorization: Bearer <token>` or
+ * `?token=<token>` (cover <img> tags can't send headers). Auth is always on.
+ *
+ * Supersedes the single shared platform password (brief 09): the token is no
+ * longer derived from a static password but is a random per-session secret, so
+ * a session can be revoked and a request can be attributed to a user.
  */
 
-function sha256Hex(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
+// Make `request.authUser` available to route handlers after the guard runs.
+declare module "fastify" {
+  interface FastifyRequest {
+    authUser?: SessionUser;
+  }
 }
 
-/** Expected token, or null when auth is disabled (no password configured). */
-const EXPECTED_TOKEN = APP_PASSWORD ? sha256Hex(APP_PASSWORD) : null;
-
-/**
- * Constant-time string compare. Both sides are hashed to a fixed 32-byte digest
- * first so `timingSafeEqual` never sees unequal-length buffers (which throws)
- * and no length information leaks from the comparison.
- */
-function tokensMatch(presented: string, expected: string): boolean {
-  const a = createHash("sha256").update(presented).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
+/** Mint a fresh, high-entropy session token. */
+function newSessionToken(): string {
+  return randomBytes(32).toString("hex");
 }
 
 /** Pull the bearer token from the header, falling back to the `token` query param. */
@@ -42,8 +47,7 @@ function presentedToken(request: FastifyRequest): string | null {
   const query = request.query as { token?: unknown } | undefined;
   // `fast-querystring` parses repeated keys (`?token=a&token=b`) into an
   // array; only a single string value is ever a valid token, so treat
-  // anything else (array, object, etc.) as absent rather than passing it to
-  // createHash() and crashing the guard into a 500.
+  // anything else (array, object, etc.) as absent.
   if (typeof query?.token === "string" && query.token) return query.token;
   return null;
 }
@@ -59,49 +63,64 @@ function isAllowlisted(request: FastifyRequest): boolean {
 }
 
 /**
- * App-wide `onRequest` guard. Must be registered BEFORE the routes. When auth
- * is disabled everything passes through; otherwise every non-allowlisted route
- * requires a valid token.
+ * App-wide `onRequest` guard. Must be registered BEFORE the routes. Every
+ * non-allowlisted request must present a token that resolves to a live session;
+ * the resolved user is attached as `request.authUser`.
  */
 export function registerAuthGuard(app: FastifyInstance): void {
-  if (!EXPECTED_TOKEN) return; // auth disabled — no-op guard
-  const expected = EXPECTED_TOKEN;
-
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     if (isAllowlisted(request)) return;
     const token = presentedToken(request);
-    if (!token || !tokensMatch(token, expected)) {
+    const user = token ? getSessionUser(token) : undefined;
+    if (!user) {
       return reply.status(401).send({ error: "UNAUTHORIZED" });
     }
+    request.authUser = user;
   });
 }
 
 /**
  * Auth endpoints. `/auth/status` is always reachable so the web app can decide
- * whether to show the login screen. `/auth/login` trades the password for a
- * token; when auth is disabled it returns 503 (the web app won't call it once
- * `required` is false).
+ * whether to show the login screen (always required now). `/auth/login` trades
+ * username + password for a session token. `/auth/logout` revokes the caller's
+ * session.
  */
 export function registerAuthRoutes(app: FastifyInstance): void {
   app.get("/auth/status", async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(authStatusSchema.parse({ required: EXPECTED_TOKEN !== null }));
+    return reply.send(authStatusSchema.parse({ required: true }));
   });
 
   app.post("/auth/login", async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!EXPECTED_TOKEN) {
-      return reply.status(503).send({ error: "AUTH_DISABLED" });
-    }
     const parsed = loginRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "INVALID_REQUEST" });
     }
-    const candidate = sha256Hex(parsed.data.password);
-    if (!tokensMatch(candidate, EXPECTED_TOKEN)) {
+    const { username, password } = parsed.data;
+    const user = getUserByName(username);
+    // Verify against the found user, or a throwaway hash when the username is
+    // unknown, so response timing doesn't reveal whether the username exists.
+    const ok = user
+      ? verifyPassword(password, user.password_hash)
+      : (verifyPassword(password, DUMMY_HASH), false);
+    if (!user || !ok) {
       return reply.status(401).send({ error: "UNAUTHORIZED" });
     }
-    return reply.send(loginResponseSchema.parse({ token: EXPECTED_TOKEN }));
+
+    const token = newSessionToken();
+    createSession(token, user.id, new Date().toISOString());
+    return reply.send(loginResponseSchema.parse({ token, username: user.username }));
+  });
+
+  app.post("/auth/logout", async (request: FastifyRequest, reply: FastifyReply) => {
+    const token = presentedToken(request);
+    if (token) deleteSession(token);
+    return reply.status(204).send();
   });
 }
 
-/** True when a platform password is configured. Used for the startup warning. */
-export const isAuthEnabled = EXPECTED_TOKEN !== null;
+// A fixed valid `saltHex:hashHex` used only to spend ~equal CPU on the
+// unknown-username path (see login). Not a real credential.
+const DUMMY_HASH =
+  "00000000000000000000000000000000:" +
+  "0000000000000000000000000000000000000000000000000000000000000000" +
+  "0000000000000000000000000000000000000000000000000000000000000000";

@@ -4,10 +4,10 @@ import { authStatusSchema, loginResponseSchema, type LoginRequest } from "@ebook
 import { ApiError, apiFetch, setAuthToken, setOnUnauthorized } from "./api-client";
 
 /**
- * Web-side auth gate (brief 09): a shared platform password, not per-user
- * accounts (D2 still holds — there's exactly one credential). `GET
- * /auth/status` says whether a password is configured at all; if so, the app
- * stays behind `LockScreen` until `POST /auth/login` returns a bearer token.
+ * Web-side auth gate: per-user accounts (username + password). The library is
+ * shared across users. `GET /auth/status` reports whether auth is required
+ * (always true now); the app stays behind `LockScreen` until `POST /auth/login`
+ * returns a session token.
  *
  * The token is mirrored to localStorage so a refresh doesn't re-lock, and
  * pushed into `api-client`'s in-memory holder (`setAuthToken`) since that
@@ -16,6 +16,7 @@ import { ApiError, apiFetch, setAuthToken, setOnUnauthorized } from "./api-clien
  */
 
 const TOKEN_KEY = "ebook-reader.token";
+const USERNAME_KEY = "ebook-reader.username";
 
 function readStoredToken(): string | null {
   try {
@@ -37,20 +38,43 @@ function writeStoredToken(token: string | null): void {
   }
 }
 
+function readStoredUsername(): string | null {
+  try {
+    return localStorage.getItem(USERNAME_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUsername(username: string | null): void {
+  try {
+    if (username) {
+      localStorage.setItem(USERNAME_KEY, username);
+    } else {
+      localStorage.removeItem(USERNAME_KEY);
+    }
+  } catch {
+    /* username persistence is best-effort */
+  }
+}
+
 export type AuthGateStatus = "checking" | "locked" | "unlocked";
 
 interface AuthState {
   status: AuthGateStatus;
-  /** Inline login-form error (wrong password), cleared on each attempt. */
+  /** Username of the signed-in user, once known (from login or storage). */
+  username: string | null;
+  /** Inline login-form error (wrong credentials), cleared on each attempt. */
   error: string | null;
   /** Call once on app start: resolves whether the gate should show at all. */
   checkStatus: () => Promise<void>;
-  /** Submit the password; on success unlocks, on 401 sets `error`. */
-  login: (password: string) => Promise<void>;
+  /** Submit username + password; on success unlocks, on 401 sets `error`. */
+  login: (username: string, password: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   status: "checking",
+  username: readStoredUsername(),
   error: null,
 
   async checkStatus() {
@@ -79,7 +103,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  async login(password) {
+  async login(username, password) {
     set({ error: null });
     try {
       const res = await apiFetch(
@@ -87,17 +111,18 @@ export const useAuthStore = create<AuthState>((set) => ({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password } satisfies LoginRequest),
+          body: JSON.stringify({ username, password } satisfies LoginRequest),
         },
         { skipAuthRedirect: true },
       );
-      const { token } = loginResponseSchema.parse(await res.json());
+      const { token, username: resolved } = loginResponseSchema.parse(await res.json());
       writeStoredToken(token);
+      writeStoredUsername(resolved);
       setAuthToken(token);
-      set({ status: "unlocked", error: null });
+      set({ status: "unlocked", username: resolved, error: null });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        set({ error: "Incorrect password." });
+        set({ error: "Incorrect username or password." });
       } else {
         set({ error: "Something went wrong. Please try again." });
       }
@@ -109,8 +134,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 // comes back 401 means the stored token is stale/invalid.
 setOnUnauthorized(() => {
   writeStoredToken(null);
+  writeStoredUsername(null);
   setAuthToken(null);
-  useAuthStore.setState({ status: "locked", error: null });
+  useAuthStore.setState({ status: "locked", username: null, error: null });
 });
 
 // Seed api-client's in-memory token from storage immediately at module load,

@@ -36,17 +36,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
 function LockScreen() {
   const login = useAuthStore((s) => s.login);
   const error = useAuthStore((s) => s.error);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = password.trim().length > 0 && !submitting;
+  const canSubmit = username.trim().length > 0 && password.trim().length > 0 && !submitting;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await login(password);
+      await login(username.trim(), password);
     } finally {
       setSubmitting(false);
     }
@@ -57,15 +58,27 @@ function LockScreen() {
       <div className="w-full max-w-sm rounded-lg border border-line-soft/60 bg-paper-raised p-8 shadow-sm">
         <div className="flex flex-col gap-1 text-center">
           <h1 className="font-display text-2xl font-bold tracking-tight text-accent">ebook-reader</h1>
-          <p className="font-ui text-sm text-ink-variant">Enter the password to continue</p>
+          <p className="font-ui text-sm text-ink-variant">Sign in to continue</p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
+            <span className="font-ui text-sm font-medium text-ink-variant">Username</span>
+            <input
+              type="text"
+              autoFocus
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full border-b border-line-soft bg-transparent px-1 py-2 font-ui text-ink outline-none transition focus:border-b-2 focus:border-accent"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
             <span className="font-ui text-sm font-medium text-ink-variant">Password</span>
             <input
               type="password"
-              autoFocus
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border-b border-line-soft bg-transparent px-1 py-2 font-ui text-ink outline-none transition focus:border-b-2 focus:border-accent"
@@ -83,7 +96,7 @@ function LockScreen() {
             disabled={!canSubmit}
             className="mt-2 rounded bg-ink-fill px-6 py-2.5 font-ui text-sm font-semibold text-on-ink-fill transition hover:opacity-90 disabled:opacity-50"
           >
-            {submitting ? "Unlocking…" : "Unlock"}
+            {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
       </div>
