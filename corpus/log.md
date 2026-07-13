@@ -1,5 +1,107 @@
 # Log
 
+## [2026-07-13] change | EPUB scroll mode → continuous manager (+ horizontal-scroll & toolbar-overlap fixes)
+
+Follow-up to the image-collapse fix below, informed by an open-source study of
+epub.js/react-reader/foliate-js/Readium/audiobookshelf. Three things shipped:
+
+**1. Scroll mode now uses the continuous manager.** Was `flow: "scrolled-doc"`
+(default manager — one isolated section per iframe, no cross-chapter scroll).
+Now `manager: "continuous" + flow: "scrolled"`, epub.js's canonical
+continuous-scroll pairing (its own `continuous-scrolled.html` example;
+react-reader README: "scrolled … works best with 'continuous'"; audiobookshelf
+uses the same for manga). Stitches consecutive spine sections into ONE seamless
+vertical scroll and preloads the next section off-screen. `EpubReader`:
+`flow`/`manager` derived from `isScroll`; `epubOptions={{ flow, manager,
+spread:"none" }}`. `key={flow}` remount kept — REQUIRED, epub.js can't swap
+managers on a live rendition (#995). Verified live on the 302-page EPUB:
+`.epub-container` scrollHeight ~17.6k, 2 section iframes mounted, % tracks
+(52→54% on scroll), toggling back to paged restores position + edge bars.
+
+**2. Stray horizontal scrollbar (classic scrollbars).** epub.js's
+`.epub-container` scrolls both axes; with classic (space-occupying) scrollbars
+the vertical bar shrinks client width while the section view stays full-width →
+a few px horizontal overflow → stray horizontal scrollbar (WSL/Linux; invisible
+with macOS overlay bars — `scrollbarWidth: 0` in headless, so not reproducible
+there). Fix: `globals.css` clips the horizontal axis in scroll mode only —
+`[data-reader-flow="scroll"] .epub-container, .epub-view { overflow-x: hidden
+!important }` + `overflow-anchor: none` (continuous-manager scroll-jump
+mitigation, per audiobookshelf) + `overflow-x: hidden` on `html,body` inside the
+iframe (themeRules, scroll-only) to catch fixed-width manga wrappers. Image is
+centred/narrower than the column, so nothing visible is cut.
+
+**3. Toolbar overlap with long chapter labels.** The grid bar's right cluster
+used `justify-self-end`, which sizes the grid item to its content — a long
+chapter label + 3-digit page counter overflowed the track and spilled over the
+centre cluster, making the mode-toggle unclickable (`elementFromPoint` = the
+label span, not the button). Fix: side tracks `1fr` → `minmax(0,1fr)`, and the
+right slot drops `justify-self-end` (defaults to `stretch` → fills its track);
+flex `justify-end` right-aligns content, `min-w-0 overflow-hidden` truncates the
+chapter label instead of overflowing. Verified at page 159 (chapter label
+present): clusters no longer overlap, toggle clickable, label ellipsises.
+
+## [2026-07-13] fix | EPUB scroll mode collapsed image pages to a sliver
+
+Follow-up to the reading-bar change below. User report: "Switch to paged view
+doesn't work properly — scroll doesn't appear and it even shrinks." Reproduced
+on the real Apothecary Diaries EPUB (a manga, many full-page illustrations): in
+scroll mode an **image page collapsed to ~8px** with nothing to scroll (looked
+"shrunk"). Root cause is pre-existing but was newly surfaced by the scroll-mode
+work: `use-epub-theme.ts` `themeRules` capped `img`/`svg` at **`max-height:
+94vh`**. In paged mode that fits a full-page illustration to the single screen;
+in `scrolled-doc` `vh` resolves against the section iframe's OWN
+(content-driven) height, so it's circular — the iframe starts ~0px → 94vh ≈ 0 →
+the image lays out ~0 → the iframe never grows. Proven live: forcing
+`max-height:none` on the image grew the body 8px → 1205px.
+
+Fix: `themeRules` takes an `isScroll` flag and **omits the `vh` cap in scroll
+mode** (width-capped only, natural aspect, the tall page just scrolls); paged
+keeps the cap. `useEpubTheme` subscribes `pageMode` and passes it (added to the
+effect deps so a mode flip re-registers the theme with the right rule). The
+off-screen page-map `applyStyles` stays paged (default `false`; it's skipped in
+scroll mode anyway).
+
+Verified live (real 302-page EPUB, page 4 = illustration): scroll mode iframe
+`8px → 1013px`, container `vScroll:true / hScroll:false`, 0 edge bars; toggling
+back to paged restores the fit-to-screen illustration + edge bars. Round-trip
+paged⇄scroll clean. PDF scroll→paged also re-checked (canvas full size, vertical
+scroll present). Typecheck clean.
+
+## [2026-07-13] change | Reading-bar stability + visible page-flip edge bars + scroll-mode axis lock
+
+User report against the floating reader bar: (1) its items shifted as content
+changed; (2) scroll mode allowed horizontal scrolling; (3) paged mode had no
+visible flip affordance; (4) flips fired from clicking the page body. Fixed
+across four files in `apps/web/src/reader`:
+
+- **Bar no longer shifts** — `ReaderToolbar` switched from `flex justify-between`
+  to `grid grid-cols-[1fr_auto_1fr]` (left→start, centre→centre, right→end).
+  `justify-between` only centres the middle cluster when the two side clusters
+  are equal width; ours aren't (Home vs chapter+page+%), so the middle controls
+  slid whenever the chapter label or page-digit count changed. The grid pins the
+  centre cluster; sides grow into equal side tracks.
+- **Visible edge bars** — `PageNav` rewritten from invisible outer-third
+  click-zones to two **visible full-height edge bars** (faint `bg-reader-fg/[.03]`
+  fill + hairline `border-reader-border/60` inner edge + centred 1.75-stroke
+  chevron; `w-9`/`sm:w-12`). Hover deepens; disabled → fades out + non-clickable.
+- **Flip only via the bars** — the full-page tap-zones are gone, so clicking the
+  page body no longer flips (verified: `elementFromPoint(centre)` = the epub
+  iframe / PDF page, not a button). Keyboard arrows kept (`use-page-nav-keys`) —
+  user chose "keep keyboard arrows", buttons are the visible primary affordance.
+- **No horizontal scroll in scroll mode** — PDF scroll container is
+  `overflow-y-auto overflow-x-hidden` and `pageWidth` ignores `zoom` in scroll
+  mode (fit-to-column), so a zoomed page can't force a sideways scrollbar. Zoom-
+  to-pan stays a paged-mode affordance. EPUB `scrolled-doc` was already clipped
+  by the content row's `overflow-hidden`.
+
+Verified live (dev server, `?dev=1` PDF + `?format=epub&dev=1`): typecheck
+clean; EPUB paged flip via edge bar works and the centre cluster stayed pinned
+as the right cluster grew (`0%`→`100%`); page centre = iframe (no flip on body);
+PDF scroll mode after 3 zoom-ins → `scrollWidth == clientWidth`, `overflow-x:
+hidden`, zero page-flip buttons, no document horizontal scroll. Conforms to
+design.md (theme tokens only, 1.75-stroke icons, soft radii; the toolbar pill
+keeps its sanctioned transient-overlay radius). `wiki/reader.md` updated.
+
 ## [2026-07-08] decision | Env validated + required at startup (D29, revises D28)
 
 Prompted by a user report: opening the app with empty localStorage never asked

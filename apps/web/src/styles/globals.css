@@ -142,3 +142,26 @@ body {
   /* UI defaults to Inter; the reading pane opts into Source Serif 4. */
   font-family: var(--font-ui);
 }
+
+/* EPUB continuous-scroll mode (manager: "continuous", flow: "scrolled").
+   epub.js's `.epub-container` is the vertical scroller and ships with
+   `overflow: auto` on BOTH axes. On platforms with classic (space-occupying)
+   scrollbars, the vertical bar shrinks the client width while epub.js keeps the
+   section view at the full pre-scrollbar width, so the container reports a few
+   px of horizontal overflow and paints a stray horizontal scrollbar (reported
+   on WSL/Linux; invisible with macOS overlay scrollbars). Continuous reading is
+   vertical-only, so clip the horizontal axis. Scoped by `data-reader-flow` (set
+   by EpubReader) so paged mode — which epub.js lays out as horizontal columns —
+   is untouched. The page image is centred and narrower than the column, so
+   nothing visible is cut. */
+[data-reader-flow="scroll"] .epub-container,
+[data-reader-flow="scroll"] .epub-view {
+  overflow-x: hidden !important;
+}
+/* The continuous manager preloads/measures sections as you scroll; the browser's
+   scroll anchoring then fights those height changes and makes the position jump.
+   Disabling scroll-anchoring here is the accepted mitigation (see audiobookshelf's
+   epub.js reader). */
+[data-reader-flow="scroll"] .epub-container {
+  overflow-anchor: none;
+}

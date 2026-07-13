@@ -40,13 +40,31 @@ export function ReaderToolbar({
     // always visible. The wrapper never eats pointer events — the progress rail
     // sits at the very bottom edge beneath it; only the pill is interactive.
     <div className="pointer-events-none relative z-30 w-full shrink-0">
-      {/* Single-line pill: justify-between spreads the three control clusters;
-          the right cluster (min-w-0) truncates rather than wrapping to a
-          second row. */}
-      <div className="pointer-events-auto mx-auto mb-3 flex w-full max-w-3xl items-center justify-between gap-3 rounded-2xl border border-reader-border/80 bg-reader-surface/95 px-3 py-2 shadow-xl shadow-black/5 backdrop-blur">
-        <div className="flex shrink-0 items-center gap-1">{leftControls}</div>
-        <div className="flex shrink-0 items-center gap-1">{formatControls}</div>
-        <div className="flex min-w-0 items-center justify-end gap-2">
+      {/* Single-line pill laid out as a 3-track grid — NOT `justify-between`.
+          `justify-between` only keeps the middle cluster centred when the two
+          side clusters are equal width; ours aren't (left = Home, right =
+          chapter + page-jump + %), so the middle controls slid sideways every
+          time the chapter label changed length or the page number gained a
+          digit. `minmax(0,1fr) auto minmax(0,1fr)` pins the centre cluster to
+          its own content width between two equal side tracks, so the bar's items
+          never shift: left grows into the left track, right into the right
+          track, the centre stays put. The side tracks use `minmax(0,1fr)` (not
+          plain `1fr`) so they can shrink BELOW their content's min-content width
+          — without the `0` floor a long chapter label + a 3-digit page counter
+          widen the right track past its share and overlap the centre cluster
+          (which made the mode-toggle unclickable). With the floor the right
+          cluster stays in its track and its `min-w-0` truncating chapter label
+          shrinks instead; `overflow-hidden` clips any residual rather than
+          letting it spill over the centre. */}
+      <div className="pointer-events-auto mx-auto mb-3 grid w-full max-w-3xl grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-reader-border/80 bg-reader-surface/95 px-3 py-2 shadow-xl shadow-black/5 backdrop-blur">
+        <div className="flex shrink-0 items-center gap-1 justify-self-start">{leftControls}</div>
+        <div className="flex shrink-0 items-center gap-1 justify-self-center">{formatControls}</div>
+        {/* No `justify-self-end`: that sizes the item to its content, letting a
+            wide right cluster overflow its track and spill over the centre.
+            Default `stretch` makes the item fill the track instead; flex
+            `justify-end` right-aligns the content inside it, and `min-w-0` +
+            `overflow-hidden` make the truncating chapter label actually shrink. */}
+        <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden">
           {rightControls}
         </div>
       </div>

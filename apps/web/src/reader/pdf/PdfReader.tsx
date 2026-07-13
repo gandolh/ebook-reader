@@ -408,12 +408,15 @@ export function PdfReader({ file }: { file: File }) {
   }, [highlightQuery]);
 
   // Fit-width base: page fills the container; `zoom` multiplies on top of it.
+  // In scroll mode zoom is ignored so each page fits the column exactly — a
+  // page wider than the column would force horizontal scrolling, which
+  // continuous reading must not have (zoom-to-pan is a paged-mode affordance).
   const pageWidth = useMemo(() => {
     if (containerWidth === null) return undefined;
     // Leave a little horizontal breathing room.
     const base = Math.min(containerWidth - 32, 1000);
-    return Math.max(base, 200) * zoom;
-  }, [containerWidth, zoom]);
+    return Math.max(base, 200) * (isScroll ? 1 : zoom);
+  }, [containerWidth, zoom, isScroll]);
 
   // Estimated rendered height for scroll-mode placeholder slots (pages outside
   // the render window), from the first page's aspect ratio × the current width.
@@ -445,7 +448,11 @@ export function PdfReader({ file }: { file: File }) {
           <div className="relative mx-auto h-full w-full max-w-4xl px-2 py-5">
             <div
               ref={containerRef}
-              className="h-full overflow-auto"
+              // Scroll mode: only vertical scrolling (pages are fit-to-width, so
+              // there is nothing to pan horizontally) — overflow-x is hidden as a
+              // belt-and-braces guard. Paged mode keeps both axes so a zoomed
+              // page can be panned.
+              className={`h-full overflow-y-auto ${isScroll ? "overflow-x-hidden" : "overflow-x-auto"}`}
               // Invert-colours "dark" hack for the fixed-layout PDF. hue-rotate
               // keeps colour images roughly sane while the page goes
               // dark-on-light → light-on-dark. Scoped to the canvas wrapper, so
@@ -511,10 +518,10 @@ export function PdfReader({ file }: { file: File }) {
             </div>
           </div>
 
-          {/* Page-turn tap zones — scoped to the content row so they cover only
-              the reading area, not the bars. Paged mode only: in scroll mode the
-              full-height invisible left/right zones are a paginated affordance
-              that would hijack clicks/selection and yank the continuous scroll. */}
+          {/* Page-flip edge bars — scoped to the content row so they cover only
+              the reading area, not the toolbar. Paged mode only: the discrete
+              left/right flip bars are a paginated affordance with no meaning in
+              continuous scroll (and would hijack clicks along the margins). */}
           {!isScroll && (
             <PageNav
               onPrev={onPrev}

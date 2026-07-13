@@ -757,14 +757,23 @@ export function EpubReader({ file }: { file: File }) {
     [],
   );
 
-  // epub.js flow follows the reading-mode toggle (chunk 11): "scrolled-doc" is
-  // one long continuous document; "paginated" is the default column-per-screen.
-  // react-reader only re-inits its rendition on `url`/`location` change (not on
-  // an `epubOptions` change), so flipping this alone wouldn't switch flow — the
-  // `key` below forces a clean remount that recreates the rendition with the new
-  // flow, and `location={cfi}` re-displays the saved position so resume holds.
-  const flow = pageMode === "scroll" ? "scrolled-doc" : "paginated";
+  // epub.js reading-mode config (chunk 11 + 2026-07-13 scroll rework). Scroll
+  // mode uses the **continuous manager + `flow: "scrolled"`** — epub.js's own
+  // canonical continuous-scroll pairing (see its `continuous-scrolled.html`
+  // example; react-reader's README: "scrolled … works best with 'continuous'
+  // manager"). It stitches consecutive spine sections into ONE seamless vertical
+  // scroll and preloads the next section off-screen, which the old `scrolled-doc`
+  // (default manager, one isolated section per iframe) never did. Paged mode
+  // stays the default manager + column-per-screen `paginated` flow.
+  //
+  // The manager CANNOT be swapped on a live rendition (epub.js #995 — swapping
+  // default↔continuous throws), and react-reader only re-inits on `url`/`location`
+  // change, so the `key={flow}` remount below is REQUIRED (not a hack): it
+  // recreates the rendition in the new manager+flow, and `location={cfi}`
+  // re-displays the saved position so resume holds across the toggle.
   const isScroll = pageMode === "scroll";
+  const flow = isScroll ? "scrolled" : "paginated";
+  const manager = isScroll ? "continuous" : "default";
 
   if (!data) {
     return <SkeletonPage />;
@@ -805,7 +814,14 @@ export function EpubReader({ file }: { file: File }) {
             absolutely, and it must anchor to THIS capped box, not the
             full-width container. A wide cap + minimal padding lets the page
             fill the space (epub's own margins still keep the text readable). */}
-        <div className="relative mx-auto h-full w-full max-w-4xl px-2 py-5">
+        <div
+          className="relative mx-auto h-full w-full max-w-4xl px-2 py-5"
+          // Drives the scroll-mode horizontal-clip rule in globals.css (kills the
+          // scrollbar-induced stray horizontal scrollbar epub.js leaves in
+          // scrolled-doc). Paged mode needs epub.js's horizontal columns, so it
+          // is deliberately excluded.
+          data-reader-flow={isScroll ? "scroll" : "paged"}
+        >
           <ReactReader
             // Remount on flow change so epub.js recreates the rendition in the
             // new mode (react-reader ignores epubOptions changes otherwise).
@@ -828,7 +844,7 @@ export function EpubReader({ file }: { file: File }) {
             handleKeyPress={() => {}}
             readerStyles={readerStyles}
             loadingView={<SkeletonPage />}
-            epubOptions={{ flow, spread: "none" }}
+            epubOptions={{ flow, manager, spread: "none" }}
           />
           {/* Jump crossfade veil. Deliberately an overlay rather than opacity
               on the column itself: animating opacity on an ancestor of the
@@ -841,10 +857,10 @@ export function EpubReader({ file }: { file: File }) {
             }`}
           />
         </div>
-          {/* Page-turn tap zones — scoped to the content row so they cover only
-              the reading area, not the bars. Paged mode only: in scroll mode the
-              full-height invisible left/right zones are a paginated affordance
-              that would hijack clicks/selection and yank the continuous scroll. */}
+          {/* Page-flip edge bars — scoped to the content row so they cover only
+              the reading area, not the toolbar. Paged mode only: the discrete
+              left/right flip bars are a paginated affordance with no meaning in
+              continuous scroll (and would hijack clicks along the margins). */}
           {!isScroll && <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext />}
         </div>
 

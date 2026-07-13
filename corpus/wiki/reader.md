@@ -69,23 +69,41 @@ The chrome is shared, but the toolbar's controls swap by format:
 - PDF → zoom/fit, invert-only "dark" hack.
 
 Both bottom bars cluster identically (brief 12): `ReaderToolbar` is a
-`justify-between` shell with three slots — **Home** (left) / **actions +
-settings gear** (middle) / **page number + progress** (right). The
-paged⇄scroll `PageModeToggle` and the settings popover both live in the middle
-actions for both formats.
+**`grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]`** shell with three slots —
+**Home** / **actions + settings gear** / **page number + progress**. The grid
+(not the old `justify-between`) pins the middle cluster to its content width
+between two equal side tracks, so the bar doesn't shift when the chapter label or
+page-digit count changes. Side tracks are `minmax(0,1fr)` and the right slot
+fills its track (no `justify-self-end`, `min-w-0 overflow-hidden`), so a long
+chapter label truncates instead of overflowing onto the middle actions.
+The paged⇄scroll `PageModeToggle` and the settings popover both live in the
+middle actions for both formats.
 
 ## Reading modes: paged ⇄ scroll (brief 11)
 A `pageMode` toggle in the bottom bar switches the current reader between
 single-page-per-view and continuous vertical scroll:
-- **EPUB** → `flow: "scrolled-doc"` via a `key={flow}` remount; the discrete
-  "Page N/M" field is replaced by a %-only chip (scrolled-doc has no
-  `displayed.page`), and the page-map walk is skipped entirely in scroll mode.
+- **EPUB** → **`manager: "continuous" + flow: "scrolled"`** via a `key={flow}`
+  remount (reworked 2026-07-13; was `scrolled-doc`/default manager, one isolated
+  section per iframe). The continuous manager stitches spine sections into one
+  seamless vertical scroll + preloads the next off-screen — epub.js's canonical
+  pairing; remount is required (can't swap managers live, #995). "Page N/M" → a
+  %-only chip (scrolled flow has no `displayed.page`); page-map walk skipped.
+  Two scroll-mode CSS pitfalls (both fixed, `isScroll`-gated): (a) **image-height
+  trap** — `themeRules`' `max-height: 94vh` img cap is circular in scrolled flow
+  (`vh` = the iframe's own content height) and collapses illustration pages;
+  dropped in scroll mode (width-only; epub.js's `adjustImages` clamps height
+  anyway). (b) **stray horizontal scrollbar** — `.epub-container` scrolls both
+  axes, so classic scrollbars shrink client width below the full-width view;
+  `globals.css` clips it in scroll mode (`.epub-container,.epub-view{overflow-x:
+  hidden}` + `overflow-anchor:none`) plus iframe `html,body{overflow-x:hidden}`.
 - **PDF** → windowed multi-page render (only pages within [-2,+3] of the top
   page mount a real canvas; the rest are aspect-sized placeholders); an
   IntersectionObserver syncs the top-of-viewport page to `currentLocation` so
   resume + the rail keep tracking. A `suppressObserverRef` guards programmatic
   jumps/resume (incl. across the async page-aspect reflow) from being
-  overwritten. `PageNav` tap-to-flip edge zones render **only in paged mode**.
+  overwritten. `PageNav` edge-bar flip buttons render **only in paged mode**;
+  in scroll mode the PDF scroll container is `overflow-x: hidden` and pages are
+  fit-to-width (zoom ignored) so continuous reading never scrolls sideways.
 
 ## Shared reading frame (brief 14)
 Both readers now use one 3-row grid — a shared `ReaderHeader` (running
@@ -110,11 +128,14 @@ Tailwind variants.
 
 ## Implementation map (built in brief 06)
 Shared, format-agnostic chrome lives in `apps/web/src/reader/chrome/`:
+- **`PageNav`** — two **visible full-height edge bars** (faint fill + hairline
+  border + centred chevron); clicking a bar flips, the page BODY doesn't. Paged
+  only; keyboard arrows still flip. (Replaced invisible tap-zones, 2026-07-13.)
 - **`ReaderToolbar`** — the toolbar shell with the **format-adaptive seam**: slots
   `leftControls` / `formatControls` / `rightControls`. Each reader supplies its
   own `formatControls` (PDF = zoom/fit/invert; EPUB = font/theme). This is the
   reuse contract — brief 07 fills the slot, doesn't fork the toolbar.
-- `PageNav` (arrows + left/right-third click-zones), `use-page-nav-keys`
+- `PageNav` (visible full-height edge bars — see above), `use-page-nav-keys`
   (Arrow/PageUp-Down/Space), `use-auto-hide-chrome` (idle-hide → Zustand
   `chromeVisible`), `ProgressIndicator`, `ProgressRail` (bottom-edge scrub strip,
   moved here from `epub/` in brief 08: hover tooltip, chapter ticks,

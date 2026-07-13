@@ -22,7 +22,14 @@ const THEME_COLORS: Record<Theme, { bg: string; fg: string; link: string }> = {
   dark: { bg: "#181818", fg: "#e8e8e8", link: "#60a5fa" },
 };
 
-export function themeRules(theme: Theme, lineSpacing: number, margins: number) {
+export function themeRules(
+  theme: Theme,
+  lineSpacing: number,
+  margins: number,
+  // Scroll mode (`flow: scrolled-doc`) changes how `vh` behaves for images —
+  // see the `img` rule below. Defaults to paged.
+  isScroll = false,
+) {
   const c = THEME_COLORS[theme];
   return {
     // iOS Safari auto-inflates text sized against a block's width. epub.js lays
@@ -33,6 +40,12 @@ export function themeRules(theme: Theme, lineSpacing: number, margins: number) {
     "html, body": {
       "-webkit-text-size-adjust": "100% !important",
       "text-size-adjust": "100% !important",
+      // Continuous scroll is vertical-only: clip any element that's wider than
+      // the column (converted-manga XHTML often wraps the page image in a
+      // fixed-width `<div>`/`<svg>` the `img` rule alone doesn't catch) so no
+      // horizontal scrollbar can appear inside the section. Paged mode needs
+      // epub.js's horizontal column layout, so this is scroll-only.
+      ...(isScroll ? { "overflow-x": "hidden !important" } : {}),
     },
     body: {
       background: `${c.bg} !important`,
@@ -54,9 +67,17 @@ export function themeRules(theme: Theme, lineSpacing: number, margins: number) {
     a: { color: `${c.link} !important` },
     // Covers and full-page illustrations: fit the viewport column and sit
     // centered instead of rendering at natural size in the top-left.
+    //
+    // The `max-height: 94vh` cap is PAGED-ONLY. In scroll mode (`scrolled-doc`)
+    // `vh` resolves against the section iframe's OWN height, which is driven by
+    // its content — a circular dependency for an image page: the iframe starts
+    // ~0px tall → 94vh ≈ 0 → the image lays out ~0 → the iframe never grows, so
+    // an illustration page collapses to a sliver with nothing to scroll. In
+    // scroll mode we cap by width only and let height follow the natural aspect;
+    // the tall page simply scrolls.
     img: {
       "max-width": "100% !important",
-      "max-height": "94vh !important",
+      ...(isScroll ? {} : { "max-height": "94vh !important" }),
       height: "auto",
       "object-fit": "contain",
       display: "block",
@@ -65,7 +86,7 @@ export function themeRules(theme: Theme, lineSpacing: number, margins: number) {
     },
     svg: {
       "max-width": "100% !important",
-      "max-height": "94vh !important",
+      ...(isScroll ? {} : { "max-height": "94vh !important" }),
     },
   };
 }
@@ -73,6 +94,10 @@ export function themeRules(theme: Theme, lineSpacing: number, margins: number) {
 export function useEpubTheme(rendition: Rendition | null) {
   const theme = useReaderStore((s) => s.theme);
   const fontSettings = useReaderStore((s) => s.fontSettings);
+  // Scroll vs paged changes the image-height rule (see themeRules). A pageMode
+  // flip remounts the rendition anyway, but subscribe + depend on it so the
+  // re-registered theme carries the right rule for the new mode.
+  const isScroll = useReaderStore((s) => s.pageMode === "scroll");
   // Tracks which rendition has had its initial settings applied, so the
   // re-render nudge below only runs for *changes*, not the first application.
   const appliedRef = useRef<Rendition | null>(null);
@@ -85,7 +110,7 @@ export function useEpubTheme(rendition: Rendition | null) {
     // rules object injects the CSS into every rendered section iframe.
     rendition.themes.register(
       themeName,
-      themeRules(theme, fontSettings.lineSpacing, fontSettings.margins),
+      themeRules(theme, fontSettings.lineSpacing, fontSettings.margins, isScroll),
     );
     rendition.themes.select(themeName);
 
@@ -122,6 +147,7 @@ export function useEpubTheme(rendition: Rendition | null) {
   }, [
     rendition,
     theme,
+    isScroll,
     fontSettings.size,
     fontSettings.family,
     fontSettings.lineSpacing,
