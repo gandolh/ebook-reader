@@ -16,7 +16,7 @@ Only genuinely unresolved threads. Delete each the moment it's answered.
   (or deriving them from `id` + `format`) would make the library portable.
   Also: dead rows linger in the UI with no cleanup path.
 
-Both former verification gaps closed on 2026-07-02 by the Both former verification gaps closed on 2026-07-02 by the
+Both former verification gaps closed on 2026-07-02 by the
 full Playwright run + live Calibre conversion (see
 [../test-plans/RESULTS.md](../test-plans/RESULTS.md)):
 

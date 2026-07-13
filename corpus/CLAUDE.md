@@ -48,23 +48,14 @@ corpus/
 
 ## Project one-liner
 
-Personal ebook reader with a **persistent library**. Upload a PDF or EPUB → it's
-saved (server-side SQLite) and shows as a cover card → reopen and read anytime.
-Reads PDF (react-pdf) and EPUB (react-reader/epub.js) 100% client-side; the
-Fastify backend owns the library (CRUD + file/cover storage) and still converts
-EPUB→PDF via Calibre. The code now has **per-user accounts** (operator-seeded,
-no self-registration) with **per-user reading progress + exact resume position**
-(`users`/`sessions`/`reading_progress` tables in `apps/api/src/db.ts`). See
-`wiki/overview.md`.
-
-> **⚠️ Corpus content drift (2026-07-13).** The per-user-accounts and
-> per-user-reading-progress work (commits `7caaa42`, `207cf7b`) landed in the
-> **code** but the wiki hasn't caught up: `decisions.md` still describes the
-> shared-password model (D28/D29) and older no-accounts/session-only stances
-> (D2/D9), and there's no `log.md` entry for it. Per source-of-truth ordering the
-> **code wins**, but these locked decisions need an explicit revisit (new D-entry
-> + `log.md` note) — not a quiet rewrite. Reconcile before trusting decisions.md
-> on auth/progress.
+Personal ebook reader with **per-user accounts** and a **shared persistent
+library**. Upload a PDF or EPUB → it's saved (server-side SQLite) and shows as a
+cover card → reopen and read anytime. Reads PDF (react-pdf) and EPUB
+(react-reader/epub.js) 100% client-side; the Fastify backend owns the library
+(CRUD + file/cover storage), auth (operator-seeded accounts, opaque sessions,
+scrypt — D30), per-user reading progress + resume position (D31), and still
+converts EPUB→PDF via Calibre. Auth is always on; accounts come from
+`apps/api/scripts/seed.ts` (no self-registration). See `wiki/overview.md`.
 
 ## Design enforcement (load-bearing)
 

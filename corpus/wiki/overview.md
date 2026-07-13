@@ -1,18 +1,20 @@
 ---
-summary: What ebook-reader is in a paragraph — a personal, single-user, persistent-library PDF/EPUB reader; the orientation page.
-updated: 2026-07-07
+summary: What ebook-reader is in a paragraph — a personal, per-user-account, persistent-library PDF/EPUB reader; the orientation page.
+updated: 2026-07-13
 ---
 
 # Overview
 
-**ebook-reader** is a personal, single-user ebook reader with a **persistent
-library**.
+**ebook-reader** is a personal ebook reader with **per-user accounts** and a
+**shared persistent library**.
 
-Upload a PDF or EPUB → it's saved and appears as a cover card in your library →
-reopen and read it anytime. No accounts (D2). The library (files + extracted
-covers + progress) persists server-side in SQLite (D24). Reading *position*
-(current page/CFI) and view state (font size, theme) still live in Zustand in
-memory and reset on refresh — that's intended (D9).
+Upload a PDF or EPUB → it's saved and appears as a cover card in the library →
+reopen and read it anytime. Access is gated by **per-user accounts** (operator-
+seeded, no self-registration — D30); the library itself (files + extracted
+covers) is **shared** across users and persists server-side in SQLite (D24).
+Reading **progress + exact resume position are per-user** (D31). Other view state
+(font size, theme, chrome) still lives in Zustand in memory and resets on refresh
+(D9); the paged/scroll mode persists to localStorage.
 
 ## What it does
 1. **Library home** — upload a PDF/EPUB → backend stores the file, extracts a

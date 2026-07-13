@@ -15,9 +15,10 @@ EPUB open-cost caching (same-book re-open ~4.7 s→66 ms locations), 17 fonts
 baseline. A scoped 3-finder review + opus fix pass caught two real bugs
 (scroll-mode PageNav tap-zones, deep-page resume corruption) + 6 more, all fixed;
 typecheck + build clean. See the 2026-07-13 log entry.
-⚠️ Still open: the corpus is **stale vs. code** on auth — per-user accounts +
-per-user reading progress shipped (commits `7caaa42`, `207cf7b`) but
-`decisions.md` still says shared-password (D28/D29); needs reconciliation.
+✅ Resolved (2026-07-13): the auth/reading-progress **corpus drift** is
+reconciled — per-user accounts + per-user reading progress (commits `7caaa42`,
+`207cf7b`, 2026-07-08) are now locked as **D30/D31**, with D2/D9/D28/D29 marked
+revised and overview/architecture/CLAUDE updated to match the code.
 
 **Latest (2026-07-07):** ✅ **Brief 10 — loading feedback** (2026-07-07 pm, **uncommitted by
 owner instruction**). Cover clicks navigate instantly; the book downloads behind

@@ -372,3 +372,18 @@ Nothing committed — owner controls.
 Follow-ups noted (not filed): `/file` served no-cache so the 24 MB EPUB
 re-downloads every open (server-side caching); a durable IndexedDB locations
 cache for first-open-after-reload; dropping legacy `.woff` (needs `sass`).
+
+## [2026-07-13] decision | Corpus reconciled with per-user auth + reading progress (D30, D31)
+
+Resolved the flagged content drift: the per-user work that shipped in code on
+2026-07-08 (commits `7caaa42` per-user accounts, `207cf7b` per-user reading
+progress) is now recorded as locked decisions. **D30** — per-user accounts
+(operator-seeded, scrypt-hashed, opaque `sessions`, always-on `onRequest` guard;
+`APP_PASSWORD` removed) replaces the shared platform password, revising D2/D28/D29.
+**D31** — per-user reading progress + exact resume position (`reading_progress`
+table) revises D9's "position is session-only" and the legacy global
+`books.progress` column. Verified against `apps/api/src/{auth,db,password,config}.ts`.
+Marked D2/D9/D28/D29 revised; updated `overview.md`, `architecture.md` (tables +
+auth flow + backend stack), and `CLAUDE.md` (one-liner, dropped the drift box).
+Also fixed a duplicated line in `open-questions.md`. `bash corpus/lint.sh` passes.
+The library remains shared across users (no per-book ownership).
