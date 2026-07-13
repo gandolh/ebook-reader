@@ -1,6 +1,6 @@
 ---
-summary: The reader experience — PDF + EPUB renderers sharing Kindle-style chrome: nav, TOC, in-book search, themes, the draggable progress rail, and resume.
-updated: 2026-07-07
+summary: The reader experience — PDF + EPUB renderers sharing one Kindle-style frame: nav, TOC, search, themes, progress rail, resume, a paged⇄scroll mode toggle, and a shared running header.
+updated: 2026-07-13
 ---
 
 # Reader
@@ -68,9 +68,38 @@ The chrome is shared, but the toolbar's controls swap by format:
 - EPUB → font controls (size/family/spacing/margins), full themes.
 - PDF → zoom/fit, invert-only "dark" hack.
 
-## State (Zustand, in-memory)
-Current page/location, theme, font settings, chrome visibility, layout mode.
-Resets on refresh (D3/D9).
+Both bottom bars cluster identically (brief 12): `ReaderToolbar` is a
+`justify-between` shell with three slots — **Home** (left) / **actions +
+settings gear** (middle) / **page number + progress** (right). The
+paged⇄scroll `PageModeToggle` and the settings popover both live in the middle
+actions for both formats.
+
+## Reading modes: paged ⇄ scroll (brief 11)
+A `pageMode` toggle in the bottom bar switches the current reader between
+single-page-per-view and continuous vertical scroll:
+- **EPUB** → `flow: "scrolled-doc"` via a `key={flow}` remount; the discrete
+  "Page N/M" field is replaced by a %-only chip (scrolled-doc has no
+  `displayed.page`), and the page-map walk is skipped entirely in scroll mode.
+- **PDF** → windowed multi-page render (only pages within [-2,+3] of the top
+  page mount a real canvas; the rest are aspect-sized placeholders); an
+  IntersectionObserver syncs the top-of-viewport page to `currentLocation` so
+  resume + the rail keep tracking. A `suppressObserverRef` guards programmatic
+  jumps/resume (incl. across the async page-aspect reflow) from being
+  overwritten. `PageNav` tap-to-flip edge zones render **only in paged mode**.
+
+## Shared reading frame (brief 14)
+Both readers now use one 3-row grid — a shared `ReaderHeader` (running
+title/detail, fades with the chrome) / a centered `max-w-4xl` column / the
+bottom bar — over `bg-reader-bg`, so a PDF and an EPUB sit in an identical
+frame; only the page content differs. PDF header title = `file.name`, detail =
+current outline section. Per-format TOC differs intentionally (EPUB docked
+sidebar vs PDF overlay drawer). Enforced by design.md (D27).
+
+## State (Zustand)
+Current page/location, theme, font settings, chrome visibility, and `pageMode`
+(`"paged"|"scroll"`, **persisted to localStorage**). Reading *position* resumes
+per-user from the library (D24); the old `layoutMode` field was dead and was
+removed (brief 11/review).
 
 ## Styling
 Tailwind + Base UI (`@base-ui/react`) primitives: **Dialog** (TOC side-panel +
@@ -129,6 +158,17 @@ only inputs that change visual page counts. Char-based `locations` are retained
 the rail stays stable across font changes). Superseded: the old
 locations-as-page-unit counter (stepped by 2, chunk-count "total"). PDF is
 unchanged (true fixed pages).
+
+**Cost + caching (brief 16, measured 2026-07-13).** The page-map walk (~2.8 s
+on a 24 MB EPUB) and `locations.generate(1000)` (~4.7 s) run in the background
+*after* the reader is visible, not behind a veil. Both are now cached
+session-scoped: `locations` via `save()/load()` keyed by book identity
+(`name|size|lastModified`), the page-map in a bounded module-level LRU keyed by
+identity + font settings + stage size (`toFixed(1)`, sub-pixel-sensitive). A
+same-book re-open skips both walks (locations ~4.7 s→66 ms, page-map ~2.8 s→376
+ms). The walk is skipped entirely in scroll mode (no discrete pages there).
+See [performance.md](performance.md). Follow-up: durable (IndexedDB) locations
+cache to survive a full reload.
 
 ## Search (built in brief 07, both formats)
 Shared **`SearchPanel`** (`reader/chrome/`, right-anchored Base UI Dialog: query +

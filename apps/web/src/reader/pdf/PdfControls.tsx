@@ -4,12 +4,15 @@ import { ToolbarButton } from "../chrome";
 
 /**
  * PDF-specific toolbar controls (brief 06). These fill the `formatControls`
- * slot of the shared `ReaderToolbar` — the format-adaptive seam. Brief 07's
- * EPUB reader swaps this out for font/theme controls without touching the shell.
+ * slot of the shared `ReaderToolbar` — the SAME format-adaptive seam the EPUB
+ * reader uses (it swaps in TOC + search + font settings; PDF swaps in
+ * zoom/invert + the theme settings trigger below).
  *
  * Controls (wiki/reader.md PDF row): zoom out / fit-width / zoom in, plus an
  * "invert colors" dark toggle (the only viable dark mode for a fixed-layout
- * PDF, since real theming can't recolor the rendered canvas).
+ * PDF, since real theming can't recolor the rendered canvas). The settings
+ * popover trigger (theme picker) is passed in as `settingsTrigger` so it sits
+ * inline with the other buttons, mirroring `EpubControls`.
  */
 export function PdfControls({
   zoom,
@@ -21,6 +24,7 @@ export function PdfControls({
   hasToc,
   onOpenToc,
   onOpenSearch,
+  settingsTrigger,
 }: {
   zoom: number;
   onZoomIn: () => void;
@@ -33,6 +37,8 @@ export function PdfControls({
   onOpenToc: () => void;
   /** Open the shared in-book search panel (brief 07, additive). */
   onOpenSearch: () => void;
+  /** The settings popover trigger (theme picker + the fixed-layout note). */
+  settingsTrigger?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -64,6 +70,7 @@ export function PdfControls({
       >
         <InvertIcon />
       </ToolbarButton>
+      {settingsTrigger}
     </div>
   );
 }

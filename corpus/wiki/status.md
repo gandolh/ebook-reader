@@ -1,11 +1,25 @@
 ---
 summary: Dated snapshot of current state — a one-liner per brief/area and where things stand right now. The living dashboard.
-updated: 2026-07-07
+updated: 2026-07-13
 ---
 
-# Status — 2026-07-07
+# Status — 2026-07-13
 
-**Latest:** ✅ **Brief 10 — loading feedback** (2026-07-07 pm, **uncommitted by
+**Latest (2026-07-13):** ✅ **Briefs 11–18 shipped** (built via orchestrate →
+plan-split-dispatch, 6 waves; reviewed + fixed; **uncommitted — owner controls**).
+Reader UX (11 paged⇄scroll toggle, 12 bottom-bar clustering, 14 PDF/EPUB frame
+parity via shared `ReaderHeader`), a bug fix (13 page-jump digits), and a perf
+pass: **15 code-split readers → entry JS 1.42 MB→407 kB (gzip 434→123 kB)**, 16
+EPUB open-cost caching (same-book re-open ~4.7 s→66 ms locations), 17 fonts
+920→544 KB, 18 a live benchmark harness + [performance.md](performance.md)
+baseline. A scoped 3-finder review + opus fix pass caught two real bugs
+(scroll-mode PageNav tap-zones, deep-page resume corruption) + 6 more, all fixed;
+typecheck + build clean. See the 2026-07-13 log entry.
+⚠️ Still open: the corpus is **stale vs. code** on auth — per-user accounts +
+per-user reading progress shipped (commits `7caaa42`, `207cf7b`) but
+`decisions.md` still says shared-password (D28/D29); needs reconciliation.
+
+**Latest (2026-07-07):** ✅ **Brief 10 — loading feedback** (2026-07-07 pm, **uncommitted by
 owner instruction**). Cover clicks navigate instantly; the book downloads behind
 an opening screen with a real progress bar (streamed against `sizeBytes`);
 failures get an error state + retry (previously silent). All three 2026-07-07
@@ -77,3 +91,11 @@ errors on a fresh load. Typecheck clean ×3.
 | 08 | Draggable progress rail (shared, both readers) | **done (2026-07-07)** |
 | 09 | Platform password (`APP_PASSWORD`, D28) | **done (2026-07-07)** |
 | 10 | Loading feedback (instant open + download progress) | **done (2026-07-07, uncommitted)** |
+| 11 | Reading bottom bar: paged ⇄ scroll mode toggle | **done (2026-07-13)** |
+| 12 | Bottom bar clustering (align PDF to EPUB) | **done (2026-07-13)** |
+| 13 | Bug: page-jump input eats digits (12 → 2) | **done (2026-07-13)** |
+| 14 | PDF/EPUB reading view visual parity | **done (2026-07-13)** |
+| 15 | Perf: code-split / lazy-load the readers | **done (2026-07-13)** |
+| 16 | Perf: reduce EPUB open cost (double-parse) | **done (2026-07-13)** |
+| 17 | Perf: trim font payload | **done (2026-07-13)** |
+| 18 | Stand up a live perf benchmark (CWV/trace) | **done (2026-07-13)** |

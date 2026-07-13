@@ -16,7 +16,9 @@ import {
   HomeButton,
   PageNav,
   PageJumpInput,
+  PageModeToggle,
   ProgressRail,
+  ReaderHeader,
   ReaderToolbar,
   SearchPanel,
   SettingsPopover,
@@ -37,6 +39,16 @@ import { createPdfSearchProvider } from "./pdf-search";
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.2;
+
+// Scroll-mode windowing (chunk 11): render real <Page> canvases only for pages
+// within this many pages of the one at the top of the viewport; every other
+// page is a cheap, correctly-sized placeholder div. This keeps a large PDF from
+// mounting every page's canvas at once (memory) while preserving scrollbar
+// length + scroll position (placeholders carry the estimated page height).
+const PDF_SCROLL_WINDOW_BEFORE = 2;
+const PDF_SCROLL_WINDOW_AFTER = 3;
+// Fallback slot height (px) before the first page's aspect ratio is known.
+const PDF_EST_PAGE_HEIGHT = 800;
 
 // Passed to <Document options>. MUST be a stable reference (react-pdf compares
 // by identity and reloads the doc otherwise) — hence module-scope. Leaving it
@@ -62,10 +74,24 @@ export function PdfReader({ file }: { file: File }) {
   const theme = useReaderStore((s) => s.theme);
   const setTheme = useReaderStore((s) => s.setTheme);
   const chromeVisible = useReaderStore((s) => s.chromeVisible);
+  // Reading mode (chunk 11): "scroll" stacks every page in one vertical scroll.
+  const pageMode = useReaderStore((s) => s.pageMode);
+  const isScroll = pageMode === "scroll";
 
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  // First page's height/width ratio, used to size placeholder slots for pages
+  // outside the render window so the scrollbar length + offsets stay stable.
+  const [pageAspect, setPageAspect] = useState<number | null>(null);
+
+  // Scroll-mode plumbing: element per page slot (for scroll-into-view + the
+  // IntersectionObserver), the last-known top of each intersecting slot, and a
+  // flag that suppresses the observer while WE are programmatically scrolling
+  // (so a jump doesn't get overwritten by the pages flying past the top).
+  const slotRefs = useRef<Map<number, HTMLElement>>(new Map());
+  const visibleTopsRef = useRef<Map<number, number>>(new Map());
+  const suppressObserverRef = useRef(false);
   const [tocOpen, setTocOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // Query to highlight on the rendered page after a search jump (D19 follow-up:
@@ -121,8 +147,55 @@ export function PdfReader({ file }: { file: File }) {
     [],
   );
 
+  // Read the first page's aspect ratio so scroll-mode placeholder slots (pages
+  // outside the render window) get a realistic height. Most PDFs are uniform, so
+  // page 1's ratio is a good estimate for all; a mismatch only causes a small
+  // scroll drift as real pages replace placeholders.
+  useEffect(() => {
+    if (!pdfDoc) return;
+    let cancelled = false;
+    void pdfDoc
+      .getPage(1)
+      .then((page) => {
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: 1 });
+        if (viewport.width > 0) setPageAspect(viewport.height / viewport.width);
+      })
+      .catch(() => {
+        /* estimate falls back to PDF_EST_PAGE_HEIGHT */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfDoc]);
+
   const tocEntries = usePdfOutline(pdfDoc);
   const hasToc = tocEntries.length > 0;
+
+  // Running-header title. A PDF has no reliable in-document title the way an
+  // EPUB carries `metadata.title`, so we use what IS available — the file name
+  // (extension stripped) — matching the EPUB header's book-title slot. Blank
+  // renders gracefully if there's somehow no name.
+  const bookTitle = useMemo(
+    () => file.name.replace(/\.pdf$/i, "").trim() || null,
+    [file.name],
+  );
+
+  // Running-header detail = the current section, mirroring EPUB's chapter label.
+  // Derived from the outline the same way the rail ticks are: the last top-level
+  // entry whose page is at or before the current page. No outline → blank.
+  const currentChapter = useMemo(() => {
+    let label: string | null = null;
+    let best = 0;
+    for (const e of tocEntries) {
+      if (e.depth !== 0 || typeof e.target !== "number") continue;
+      if (e.target <= currentPage && e.target >= best) {
+        best = e.target;
+        label = e.label;
+      }
+    }
+    return label;
+  }, [tocEntries, currentPage]);
 
   // Chapter ticks for the scrub rail (brief 08): top-level outline entries that
   // resolved to a page. Empty (tickless rail) when the PDF has no outline.
@@ -136,13 +209,37 @@ export function PdfReader({ file }: { file: File }) {
       }));
   }, [tocEntries, numPages]);
 
+  // Callback ref that registers/unregisters a scroll-mode page slot element.
+  const registerSlot = useCallback(
+    (page: number) => (el: HTMLDivElement | null) => {
+      if (el) slotRefs.current.set(page, el);
+      else slotRefs.current.delete(page);
+    },
+    [],
+  );
+
+  // Bring a page's slot to the top of the scroll viewport. Guards the observer
+  // for a beat so the pages scrolling past the top don't overwrite the target.
+  const scrollToPage = useCallback((page: number) => {
+    const el = slotRefs.current.get(page);
+    if (!el) return;
+    suppressObserverRef.current = true;
+    el.scrollIntoView({ block: "start" });
+    window.setTimeout(() => {
+      suppressObserverRef.current = false;
+    }, 400);
+  }, []);
+
   const goToPage = useCallback(
     (page: number) => {
       if (numPages === null) return;
       const clamped = Math.min(Math.max(page, 1), numPages);
       setCurrentLocation(clamped);
+      // In scroll mode a page change is a scroll (the observer will re-confirm
+      // the landed page); in paged mode it just swaps the single rendered page.
+      if (isScroll) requestAnimationFrame(() => scrollToPage(clamped));
     },
-    [numPages, setCurrentLocation],
+    [numPages, setCurrentLocation, isScroll, scrollToPage],
   );
 
   const onPrev = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
@@ -159,6 +256,86 @@ export function PdfReader({ file }: { file: File }) {
   );
 
   usePageNavKeys({ onPrev, onNext });
+
+  // ── Scroll-mode: track the page nearest the top of the viewport ───────────
+  // An IntersectionObserver rooted on the scroll container reports which page
+  // slots intersect; we pick the one whose top is closest to the container's
+  // top edge and sync it to `currentLocation`, so resume + the progress rail
+  // keep tracking as the reader free-scrolls. Skipped entirely in paged mode.
+  useEffect(() => {
+    if (!isScroll || !numPages) return;
+    const root = containerRef.current;
+    if (!root) return;
+    visibleTopsRef.current.clear();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const page = Number((entry.target as HTMLElement).dataset.page);
+          if (!page) continue;
+          if (entry.isIntersecting) {
+            visibleTopsRef.current.set(page, entry.boundingClientRect.top);
+          } else {
+            visibleTopsRef.current.delete(page);
+          }
+        }
+        // Don't fight a programmatic jump (goToPage / resume) mid-scroll.
+        if (suppressObserverRef.current) return;
+        const rootTop = root.getBoundingClientRect().top;
+        let best: number | null = null;
+        let bestDist = Infinity;
+        for (const [page, top] of visibleTopsRef.current) {
+          const dist = Math.abs(top - rootTop);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = page;
+          }
+        }
+        if (best !== null && best !== useReaderStore.getState().currentLocation) {
+          setCurrentLocation(best);
+        }
+      },
+      // A few thresholds so crossing the top edge always fires an update.
+      { root, threshold: [0, 0.25, 0.5, 1] },
+    );
+    slotRefs.current.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [isScroll, numPages, setCurrentLocation]);
+
+  // On entering scroll mode (or once the pages exist), bring the current/resume
+  // page to the top so switching modes never loses the reader's place.
+  //
+  // The subtlety (why this doesn't just call scrollToPage once): placeholder
+  // slot heights depend on `pageAspect`, which resolves asynchronously AFTER
+  // this first fires. When it lands, every out-of-window slot jumps from the
+  // ~800px fallback to its real height — a reflow that slides a different page
+  // under the top edge and, unguarded, lets the IntersectionObserver overwrite
+  // the just-restored resume page (error grows with resume depth). So we keep
+  // the observer suppressed continuously from mount and only arm the release
+  // ONCE `pageAspect` is known; the effect re-runs when it resolves, re-anchors
+  // the saved page at the final layout, then releases the observer.
+  useEffect(() => {
+    if (!isScroll || !numPages) return;
+    suppressObserverRef.current = true;
+    const raf = requestAnimationFrame(() => {
+      const saved = useReaderStore.getState().currentLocation;
+      const el = slotRefs.current.get(typeof saved === "number" ? saved : 1);
+      el?.scrollIntoView({ block: "start" });
+    });
+    // Only start the release timer once slot heights are final. While
+    // `pageAspect` is still null the observer stays suppressed (no timer), so
+    // the pending reflow can't overwrite the resume position.
+    let release: number | undefined;
+    if (pageAspect !== null) {
+      release = window.setTimeout(() => {
+        suppressObserverRef.current = false;
+      }, 400);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      if (release !== undefined) window.clearTimeout(release);
+    };
+  }, [isScroll, numPages, pageAspect]);
 
   const onZoomIn = useCallback(
     () => setZoom(Math.min(MAX_ZOOM, Math.round((zoom + ZOOM_STEP) * 100) / 100)),
@@ -238,113 +415,190 @@ export function PdfReader({ file }: { file: File }) {
     return Math.max(base, 200) * zoom;
   }, [containerWidth, zoom]);
 
+  // Estimated rendered height for scroll-mode placeholder slots (pages outside
+  // the render window), from the first page's aspect ratio × the current width.
+  const estPageHeight = useMemo(() => {
+    if (pageWidth && pageAspect) return pageWidth * pageAspect;
+    return PDF_EST_PAGE_HEIGHT;
+  }, [pageWidth, pageAspect]);
+
   return (
-    <div className="fixed inset-0 top-0 flex flex-col bg-reader-bg">
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-auto"
-        // Invert-colours "dark" hack for the fixed-layout PDF. hue-rotate keeps
-        // colour images roughly sane while the page goes dark-on-light → light-
-        // on-dark. Applied to the canvas wrapper only, so the chrome stays themed
-        // normally.
-        style={inverted ? { filter: "invert(1) hue-rotate(180deg)" } : undefined}
-      >
-        <div className="flex min-h-full justify-center py-6">
-          <Document
-            file={file}
-            onLoadSuccess={onLoadSuccess}
-            options={DOCUMENT_OPTIONS}
-            loading={<LoadingState />}
-            error={<ErrorState />}
-            className="max-w-full"
-          >
-            <Page
-              pageNumber={currentPage}
-              width={pageWidth}
-              renderTextLayer
-              renderAnnotationLayer
-              customTextRenderer={customTextRenderer}
-              className="shadow-lg"
+    // Same frame as the EPUB reader (chunk 14): a reading pane laid out as a
+    // 3-row grid — running header / content / toolbar. Wrapped in the same
+    // `flex bg-reader-bg` shell so both formats share background + framing;
+    // only the page content differs (fixed-layout canvas vs reflowed column).
+    <div className="fixed inset-0 top-0 flex bg-reader-bg">
+      <div className="relative grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto] overflow-hidden">
+        {/* Row 1: running orientation (title / section). Shared component; fades
+            with the chrome exactly like EPUB's, keeping its row so the content
+            below never shifts. */}
+        <ReaderHeader title={bookTitle} detail={currentChapter} visible={chromeVisible} />
+
+        {/* Row 2: content. min-h-0 + min-w-0 let the 1fr row shrink so a zoomed
+            page pans inside the frame instead of blowing the grid out. */}
+        <div className="relative min-h-0 min-w-0 overflow-hidden">
+          {/* One centered, measure-capped column — identical framing to EPUB
+              (max-w-4xl, px-2 py-5). The scroll container lives INSIDE the cap so
+              zoom/overflow pans within the column rather than widening the pane.
+              `containerRef` measures this capped box, so fit-width sizes the page
+              to the same column the EPUB text fills. */}
+          <div className="relative mx-auto h-full w-full max-w-4xl px-2 py-5">
+            <div
+              ref={containerRef}
+              className="h-full overflow-auto"
+              // Invert-colours "dark" hack for the fixed-layout PDF. hue-rotate
+              // keeps colour images roughly sane while the page goes
+              // dark-on-light → light-on-dark. Scoped to the canvas wrapper, so
+              // the shared chrome (header/rail/toolbar) stays themed normally.
+              style={inverted ? { filter: "invert(1) hue-rotate(180deg)" } : undefined}
+            >
+              <Document
+                file={file}
+                onLoadSuccess={onLoadSuccess}
+                options={DOCUMENT_OPTIONS}
+                loading={<LoadingState />}
+                error={<ErrorState />}
+                className="min-h-full"
+              >
+                {isScroll && numPages !== null ? (
+                  // Scroll mode: every page has a slot, but only pages within the
+                  // window render a real <Page> (canvas); the rest are correctly-
+                  // sized placeholders so the scroll length + offsets hold without
+                  // mounting every canvas at once.
+                  <div className="flex min-h-full flex-col items-center gap-4 py-2">
+                    {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
+                      const active =
+                        n >= currentPage - PDF_SCROLL_WINDOW_BEFORE &&
+                        n <= currentPage + PDF_SCROLL_WINDOW_AFTER;
+                      return (
+                        <div
+                          key={n}
+                          data-page={n}
+                          ref={registerSlot(n)}
+                          className="w-full max-w-full"
+                          style={{
+                            width: pageWidth,
+                            minHeight: active ? undefined : estPageHeight,
+                          }}
+                        >
+                          {active ? (
+                            <Page
+                              pageNumber={n}
+                              width={pageWidth}
+                              renderTextLayer
+                              renderAnnotationLayer
+                              customTextRenderer={customTextRenderer}
+                              className="shadow-lg"
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex min-h-full justify-center">
+                    <Page
+                      pageNumber={currentPage}
+                      width={pageWidth}
+                      renderTextLayer
+                      renderAnnotationLayer
+                      customTextRenderer={customTextRenderer}
+                      className="shadow-lg"
+                    />
+                  </div>
+                )}
+              </Document>
+            </div>
+          </div>
+
+          {/* Page-turn tap zones — scoped to the content row so they cover only
+              the reading area, not the bars. Paged mode only: in scroll mode the
+              full-height invisible left/right zones are a paginated affordance
+              that would hijack clicks/selection and yank the continuous scroll. */}
+          {!isScroll && (
+            <PageNav
+              onPrev={onPrev}
+              onNext={onNext}
+              canPrev={currentPage > 1}
+              canNext={numPages !== null && currentPage < numPages}
             />
-          </Document>
+          )}
         </div>
-      </div>
 
-      <PageNav
-        onPrev={onPrev}
-        onNext={onNext}
-        canPrev={currentPage > 1}
-        canNext={numPages !== null && currentPage < numPages}
-      />
-
-      {numPages !== null && numPages > 0 && (
-        <ProgressRail
-          percent={(currentPage / numPages) * 100}
-          totalPages={numPages}
-          ticks={railTicks}
-          visible={chromeVisible}
-          onSeek={onSeekRail}
-        />
-      )}
-
-      <TocDrawer
-        open={tocOpen}
-        onOpenChange={setTocOpen}
-        entries={tocEntries}
-        onNavigate={onNavigateToc}
-      />
-
-      {searchProvider && (
-        <SearchPanel
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          provider={searchProvider}
-          onJump={onJumpToMatch}
-        />
-      )}
-
-      <ReaderToolbar
-        leftControls={<HomeButton />}
-        // The `formatControls` slot IS the format-adaptive seam — PDF fills it
-        // here; brief 07 fills it with EPUB font/theme controls (same shell).
-        formatControls={
-          <PdfControls
-            zoom={zoom}
-            onZoomIn={onZoomIn}
-            onZoomOut={onZoomOut}
-            onFitWidth={onFitWidth}
-            inverted={inverted}
-            onToggleInvert={onToggleInvert}
-            hasToc={hasToc}
-            onOpenToc={() => setTocOpen(true)}
-            onOpenSearch={() => setSearchOpen(true)}
+        {numPages !== null && numPages > 0 && (
+          <ProgressRail
+            percent={(currentPage / numPages) * 100}
+            totalPages={numPages}
+            ticks={railTicks}
+            visible={chromeVisible}
+            onSeek={onSeekRail}
           />
-        }
-        rightControls={
-          <>
+        )}
+
+        <TocDrawer
+          open={tocOpen}
+          onOpenChange={setTocOpen}
+          entries={tocEntries}
+          onNavigate={onNavigateToc}
+        />
+
+        {searchProvider && (
+          <SearchPanel
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            provider={searchProvider}
+            onJump={onJumpToMatch}
+          />
+        )}
+
+        <ReaderToolbar
+          leftControls={<HomeButton />}
+          // The `formatControls` slot IS the format-adaptive seam — PDF fills it
+          // here; brief 07 fills it with EPUB font/theme controls (same shell).
+          formatControls={
+            // Append the reading-mode toggle alongside PdfControls in the middle
+            // cluster (mirrors the EPUB reader) without editing shared PdfControls.
+            <>
+              <PdfControls
+                zoom={zoom}
+                onZoomIn={onZoomIn}
+                onZoomOut={onZoomOut}
+                onFitWidth={onFitWidth}
+                inverted={inverted}
+                onToggleInvert={onToggleInvert}
+                hasToc={hasToc}
+                onOpenToc={() => setTocOpen(true)}
+                onOpenSearch={() => setSearchOpen(true)}
+                settingsTrigger={
+                  <SettingsPopover
+                    title="Reader settings"
+                    trigger={
+                      <ToolbarButton label="Reader settings">
+                        <SettingsIcon />
+                      </ToolbarButton>
+                    }
+                  >
+                    <ThemePicker />
+                    <p className="text-xs text-reader-fg/60">
+                      PDF is fixed-layout: "Dark" inverts the page colours; font
+                      controls are EPUB-only.
+                    </p>
+                  </SettingsPopover>
+                }
+              />
+              <PageModeToggle />
+            </>
+          }
+          rightControls={
             <PageJumpInput
               current={currentPage}
               total={numPages}
               onJump={goToPage}
               percent={numPages ? Math.round((currentPage / numPages) * 100) : null}
             />
-            <SettingsPopover
-              title="Reader settings"
-              trigger={
-                <ToolbarButton label="Reader settings">
-                  <SettingsIcon />
-                </ToolbarButton>
-              }
-            >
-              <ThemePicker />
-              <p className="text-xs text-reader-fg/60">
-                PDF is fixed-layout: "Dark" inverts the page colours; font
-                controls are EPUB-only.
-              </p>
-            </SettingsPopover>
-          </>
-        }
-      />
+          }
+        />
+      </div>
     </div>
   );
 }

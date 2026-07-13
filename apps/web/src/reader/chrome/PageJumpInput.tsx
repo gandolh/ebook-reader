@@ -32,10 +32,18 @@ export function PageJumpInput({
   // `null` = not editing (mirror `current`); a string = the in-progress draft.
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Tracks whether we were already editing on the last render, so the
+  // select-all effect below only fires on the null -> string transition
+  // (focus), not on every keystroke while `draft` keeps changing.
+  const wasEditingRef = useRef(false);
 
-  // Select-all on focus so a typed number replaces the shown page outright.
+  // Select-all once editing begins so a typed number replaces the shown page
+  // outright — but not on later keystrokes, or each digit would wipe out the
+  // one before it (the selection would re-cover the whole field every time).
   useEffect(() => {
-    if (draft !== null) inputRef.current?.select();
+    const isEditing = draft !== null;
+    if (isEditing && !wasEditingRef.current) inputRef.current?.select();
+    wasEditingRef.current = isEditing;
   }, [draft]);
 
   const canJump = total !== null && total > 0;

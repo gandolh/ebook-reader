@@ -279,3 +279,96 @@ Playfair title, determinate accent bar, %) and an error state with "Try again"
 Out of scope: the live host's ~3s first-HTML latency (server-side). Owner
 instruction mid-brief: the VPS address never goes into git, and nothing is
 committed until they say so.
+
+## [2026-07-13] todo | Briefs 11–14 filed — reader UX + a bug
+
+Filed four reader briefs from user requests (all in `briefs/todo/`, not started):
+[11 — paged⇄scroll mode toggle](briefs/done/11-reading-mode-toggle.md) (store
+flag + PDF multi-page render + EPUB `flow: scrolled-doc`),
+[12 — bottom-bar clustering](briefs/done/12-bottom-bar-clustering.md) (move PDF's
+settings gear out of the right cluster so PDF matches EPUB's home/actions/page
+layout; the `ReaderToolbar` shell already does justify-between),
+[13 — page-input digit bug](briefs/done/13-page-input-select-bug.md) (root cause
+found: `PageJumpInput` calls `.select()` in a `[draft]` effect, so every
+keystroke re-selects and the next digit replaces — typing "12" lands "2";
+shared control, affects PDF too), and
+[14 — PDF/EPUB visual parity](briefs/done/14-reader-visual-parity.md) (give PDF
+the EPUB running-header + column/background frame; must conform to design.md D27).
+
+## [2026-07-13] maintenance | DB seeded with two user accounts
+
+Inserted users **teo** and **alex** directly into `apps/api/data/library.db`
+(reusing the app's scrypt `hashPassword` + `upsertUser`; no `seed.ts` written per
+owner request). Confirms the code now uses per-user accounts, not the shared
+`APP_PASSWORD` — see the drift note below.
+
+## [2026-07-13] ingest | Performance benchmark (bundle + code) → briefs 15–18
+
+Ran a performance pass ("use personal skills"). The `performance-analysis` skill
+needs Chrome DevTools MCP (not registered here) and the app is auth-gated, so
+live CWV/traces weren't possible; measured what was: a production `vite build`
+and a code audit of the reader hot paths. Findings (measured):
+- **Entry JS = 1,418.94 kB (gzip 434 kB), one monolithic chunk** — `read.tsx`
+  statically imports BOTH readers, so pdf.js + epub.js ship to every user. Vite
+  warns on the >500 kB chunk. → [brief 15](briefs/done/15-code-split-readers.md).
+- **pdf.worker.min = 1,046 kB** (already on-demand — fine).
+- **Fonts = 920 KB** (412 KB woff2 + 508 KB legacy woff; cyrillic/greek/vietnamese
+  subsets for an English-first app). → [brief 17](briefs/done/17-font-payload-trim.md).
+- **EPUB open parses the file twice** (react-reader buffer + a throwaway `Book`
+  for the off-screen page-map walk) plus `locations.generate(1000)`, eagerly on
+  every open. → [brief 16](briefs/done/16-epub-open-cost.md).
+- Filed [brief 18](briefs/done/18-live-perf-benchmark.md) to stand up the live
+  CWV/trace measurement the pass couldn't run, so 15–17 can be ranked by measured
+  user time, not payload alone.
+
+## [2026-07-13] maintenance | Corpus structure upgraded to personal-skills v0.20.0 conventions
+
+Added `summary:`+`updated:` frontmatter to all 8 wiki pages; wrote `corpus/lint.sh`
+(frontmatter / relative-link / page-size checks + `--index` catalog generator);
+`index.md`'s wiki catalog is now generated; added the retrieval budget + lint rule
+to `CLAUDE.md`; restored `briefs/todo` + `briefs/superseded` dirs and fixed 4
+broken links the linter caught. Also documented this project's `test-plans/` layer
+in the `corpus-flow` skill source. `bash corpus/lint.sh` passes.
+
+## [2026-07-13] incident | Corpus content drift vs. code (auth / reading progress) — UNRESOLVED
+
+Per-user accounts + per-user reading progress landed in code (commits `7caaa42`,
+`207cf7b`; `users`/`sessions`/`reading_progress` in `apps/api/src/db.ts`;
+`config.ts` no longer requires `APP_PASSWORD`), but the wiki still describes the
+shared-password model (`decisions.md` D28/D29, and D2/D9 stances). No prior log
+entry recorded the change. Flagged in `CLAUDE.md` + `status.md`; needs an explicit
+decisions reconciliation (new D-entry + wiki update) rather than a quiet rewrite.
+
+## [2026-07-13] done | Briefs 11–18 built via orchestrate → plan-split-dispatch (6 waves)
+
+Built the whole reader backlog with the model-routed subagent orchestrator
+(controller opus; sonnet for mechanical chunks, opus for design/perf). Waves:
+1 (parallel) 13‖15‖17, then serial 12 → 14 → 11 (shared reader files), then 18
+(measure) → 16 (optimize). Every wave passed a controller verify gate (typecheck
++ build). All briefs moved to `briefs/done/` with per-brief outcome notes.
+
+**What shipped:**
+- **11** paged⇄scroll toggle (`pageMode` store field; PDF windowed multi-page +
+  IntersectionObserver; EPUB `flow: scrolled-doc`).
+- **12** PDF bottom bar clustered like EPUB (settings gear → middle; right = page/%).
+- **13** page-jump digit bug fixed (select-all only on focus transition).
+- **14** shared `ReaderHeader`; PDF adopts EPUB's 3-row grid frame.
+- **15** readers code-split — **entry JS 1,418.94 kB → ~407 kB (gzip 434 → 123 kB)**.
+- **16** EPUB open-cost caching (locations + page-map) — **same-book re-open
+  locations 4711→66 ms, page-map 2814→376 ms**; cold unchanged.
+- **17** font payload **920 KB → 544 KB** (per-subset imports).
+- **18** live perf benchmark harness + `wiki/performance.md` baseline.
+
+**Review + fixes (scoped 3-finder review → 1 opus fix pass):** eight findings
+fixed, incl. two real bugs — PageNav tap-zones stayed live in scroll mode (both
+readers), and deep-page scroll-mode resume was corrupted by late page-aspect
+reflow — plus EPUB cache-key collision (added `lastModified`), sub-pixel stale
+page-map key, a `locations.generate` cancellation guard, a chunk-load
+`ReaderChunkErrorBoundary`, and removal of the dead `layoutMode` store field.
+Final typecheck + build clean; readers still split. See
+[wiki/reader.md](wiki/reader.md), [wiki/performance.md](wiki/performance.md).
+Nothing committed — owner controls.
+
+Follow-ups noted (not filed): `/file` served no-cache so the 24 MB EPUB
+re-downloads every open (server-side caching); a durable IndexedDB locations
+cache for first-open-after-reload; dropping legacy `.woff` (needs `sass`).

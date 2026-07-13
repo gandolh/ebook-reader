@@ -5,10 +5,12 @@
  * this folder may branch on format or import a specific renderer.
  */
 export { ReaderToolbar, ToolbarButton } from "./ReaderToolbar";
+export { ReaderHeader } from "./ReaderHeader";
 export { HomeButton } from "./HomeButton";
 export { PageNav } from "./PageNav";
 export { ProgressIndicator } from "./ProgressIndicator";
 export { PageJumpInput } from "./PageJumpInput";
+export { PageModeToggle } from "./PageModeToggle";
 export { ProgressRail, type RailTick } from "./ProgressRail";
 export { TocDrawer, type TocEntry } from "./TocDrawer";
 export { TocSidebar } from "./TocSidebar";

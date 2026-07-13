@@ -16,7 +16,13 @@ import type { Format } from "@ebook-reader/shared";
 
 export type Theme = "light" | "sepia" | "dark";
 
-export type LayoutMode = "paginated" | "scroll";
+/**
+ * Reading-mode toggle (chunk 11): one page per view ("paged") vs a continuous
+ * vertical scroll ("scroll"). The durable, user-facing preference the bottom-bar
+ * toggle flips, wired into both readers (EPUB `flow`, PDF single-vs-multi-page
+ * render). Default "paged".
+ */
+export type PageMode = "paged" | "scroll";
 
 export interface FontSettings {
   /** Font size in px. */
@@ -45,7 +51,12 @@ export interface ReaderState {
    * is open, so the toolbar can't fade out from under the user.
    */
   chromeHoldCount: number;
-  layoutMode: LayoutMode;
+  /**
+   * Reading mode: single page per view vs continuous vertical scroll. Like
+   * `tocSidebarOpen`, this is a durable UI *preference* (not reading position,
+   * D9), so it's mirrored to localStorage and survives a refresh.
+   */
+  pageMode: PageMode;
   /**
    * Whether the EPUB contents sidebar is docked open. Unlike reading position
    * (D9: intentionally not persisted), this is a durable UI *preference* — the
@@ -90,7 +101,10 @@ export interface ReaderState {
   toggleChrome: () => void;
   acquireChromeHold: () => void;
   releaseChromeHold: () => void;
-  setLayoutMode: (mode: LayoutMode) => void;
+  /** Set the reading mode (paged/scroll), persisted. */
+  setPageMode: (mode: PageMode) => void;
+  /** Flip between paged and scroll reading modes, persisted. */
+  togglePageMode: () => void;
   /** Toggle the docked contents sidebar (persisted). */
   toggleTocSidebar: () => void;
   /** Stash the picked file + its detected format for `/read` to pick up. */
@@ -140,13 +154,34 @@ function writeTocSidebarPref(open: boolean) {
   }
 }
 
+// Reading mode is the other durable UI preference (chunk 11). Persisted the same
+// best-effort way as the sidebar: a single localStorage key, guarded so SSR/no-
+// storage environments fall back to the "paged" default.
+const PAGE_MODE_KEY = "ebook-reader:page-mode";
+
+function readPageModePref(): PageMode {
+  try {
+    return localStorage.getItem(PAGE_MODE_KEY) === "scroll" ? "scroll" : "paged";
+  } catch {
+    return "paged";
+  }
+}
+
+function writePageModePref(mode: PageMode) {
+  try {
+    localStorage.setItem(PAGE_MODE_KEY, mode);
+  } catch {
+    /* preference persistence is best-effort */
+  }
+}
+
 const initialState = {
   theme: "light" as Theme,
   fontSettings: DEFAULT_FONT_SETTINGS,
   currentLocation: null as ReaderLocation,
   chromeVisible: true,
   chromeHoldCount: 0,
-  layoutMode: "paginated" as LayoutMode,
+  pageMode: readPageModePref(),
   tocSidebarOpen: readTocSidebarPref(),
   loadedFile: null as File | null,
   loadedFormat: null as Format | null,
@@ -174,7 +209,17 @@ export const useReaderStore = create<ReaderState>((set) => ({
     })),
   releaseChromeHold: () =>
     set((state) => ({ chromeHoldCount: Math.max(0, state.chromeHoldCount - 1) })),
-  setLayoutMode: (layoutMode) => set({ layoutMode }),
+  setPageMode: (pageMode) =>
+    set(() => {
+      writePageModePref(pageMode);
+      return { pageMode };
+    }),
+  togglePageMode: () =>
+    set((state) => {
+      const pageMode: PageMode = state.pageMode === "paged" ? "scroll" : "paged";
+      writePageModePref(pageMode);
+      return { pageMode };
+    }),
   toggleTocSidebar: () =>
     set((state) => {
       const tocSidebarOpen = !state.tocSidebarOpen;

@@ -1,17 +1,24 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { LibraryBook } from "@ebook-reader/shared";
 
 import { useReaderStore } from "../store/reader-store";
 import { coverUrl } from "../lib/library-api";
-import { PdfReader } from "../reader/pdf";
-import { EpubReader } from "../reader/epub";
 import { useProgressSync } from "../lib/use-progress-sync";
 import { useHydrateBook } from "../lib/use-hydrate-book";
 import { useDevSampleFile } from "../reader/pdf/dev/use-dev-sample-file";
 import { useDevSampleEpub } from "../reader/epub/dev/use-dev-sample-epub";
+import { ReaderChunkErrorBoundary } from "../reader/ReaderChunkErrorBoundary";
 
 const routeApi = getRouteApi("/read");
+
+// Code-split the two renderers (react-pdf/pdf.js and react-reader/epub.js are
+// both heavy) so the library home never pays for either, and each format's
+// bundle loads only once that format is actually opened. The barrels export
+// named bindings (reused elsewhere), so adapt to the default export `lazy`
+// requires here rather than changing their public shape.
+const PdfReader = lazy(() => import("../reader/pdf").then((m) => ({ default: m.PdfReader })));
+const EpubReader = lazy(() => import("../reader/epub").then((m) => ({ default: m.EpubReader })));
 
 /**
  * `/read` — the reader view. Reads the in-memory `File` handed over by the
@@ -63,13 +70,40 @@ export function Read() {
     return <NoFileState format={effectiveFormat} notFound={hydrate.status === "not-found"} />;
   }
 
+  // Suspense fallback while the lazy chunk downloads: reuse the same opening
+  // screen shown during the file download above, so a slow network doesn't
+  // introduce a visibly different loading state between "fetching the file"
+  // and "fetching the renderer".
+  // The lazy reader chunk can fail to download (stale deploy / flaky net); the
+  // boundary turns that from an app crash into the same recoverable error screen
+  // the file download uses, with a retry (a reload — see the boundary).
+  const chunkErrorFallback = (retry: () => void) => (
+    <OpeningErrorState
+      book={hydrate.book}
+      onRetry={retry}
+      detail="Couldn't load the reader — the app may have updated. Reload to try again."
+    />
+  );
+
   if (effectiveFormat === "pdf") {
-    return <PdfReader file={file} />;
+    return (
+      <ReaderChunkErrorBoundary fallback={chunkErrorFallback}>
+        <Suspense fallback={<OpeningState book={hydrate.book} progress={null} />}>
+          <PdfReader file={file} />
+        </Suspense>
+      </ReaderChunkErrorBoundary>
+    );
   }
 
   if (effectiveFormat === "epub") {
     // Brief 07: the EPUB reader (react-reader) reuses this brief's shared chrome.
-    return <EpubReader file={file} />;
+    return (
+      <ReaderChunkErrorBoundary fallback={chunkErrorFallback}>
+        <Suspense fallback={<OpeningState book={hydrate.book} progress={null} />}>
+          <EpubReader file={file} />
+        </Suspense>
+      </ReaderChunkErrorBoundary>
+    );
   }
 
   return <NoFileState format={effectiveFormat} />;
@@ -136,9 +170,18 @@ function OpeningState({ book, progress }: { book: LibraryBook | null; progress: 
   );
 }
 
-/** Download failed (API offline, connection dropped). Today's silent failure
- * becomes an explicit state with a retry. */
-function OpeningErrorState({ book, onRetry }: { book: LibraryBook | null; onRetry: () => void }) {
+/** Download failed (API offline, connection dropped) — or, with a custom
+ * `detail`, a reader chunk that failed to load (stale deploy / flaky net).
+ * Today's silent failure becomes an explicit state with a retry. */
+function OpeningErrorState({
+  book,
+  onRetry,
+  detail = "The download didn't finish — the connection may have dropped.",
+}: {
+  book: LibraryBook | null;
+  onRetry: () => void;
+  detail?: string;
+}) {
   return (
     <main className="grid min-h-screen place-items-center bg-reader-bg px-4">
       <div className="flex w-full max-w-xs flex-col items-center gap-5 text-center">
@@ -147,9 +190,7 @@ function OpeningErrorState({ book, onRetry }: { book: LibraryBook | null; onRetr
           <h1 className="font-display text-xl leading-snug font-semibold text-reader-fg">
             Couldn't open {book ? `“${book.title}”` : "your book"}
           </h1>
-          <p className="text-sm text-reader-fg/60">
-            The download didn't finish — the connection may have dropped.
-          </p>
+          <p className="text-sm text-reader-fg/60">{detail}</p>
         </div>
         <div className="flex items-center gap-3">
           <button

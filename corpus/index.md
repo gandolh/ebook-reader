@@ -19,6 +19,7 @@ Catalog generated from each page's `summary:` frontmatter — run
 - [design.md](wiki/design.md) — The enforced "Quiet Paper" visual language (D27) — theme tokens, Playfair/Source Serif 4/Inter type roles, spacing/elevation rules, and the frontend conformance checklist.
 - [open-questions.md](wiki/open-questions.md) — The genuinely unresolved threads only — each deleted the moment it's answered (history lives in status.md + log.md).
 - [overview.md](wiki/overview.md) — What ebook-reader is in a paragraph — a personal, single-user, persistent-library PDF/EPUB reader; the orientation page.
+- [performance.md](wiki/performance.md) — Recorded live + build-time performance baseline of the current (post-code-split) build — initial JS transfer, chunk sizes, cover→first-page for PDF and EPUB, and EPUB open phases — plus how to reproduce the numbers.
 - [reader.md](wiki/reader.md) — The reader experience — PDF + EPUB renderers sharing Kindle-style chrome: nav, TOC, in-book search, themes, the draggable progress rail, and resume.
 - [status.md](wiki/status.md) — Dated snapshot of current state — a one-liner per brief/area and where things stand right now. The living dashboard.
 <!-- END wiki-catalog -->
