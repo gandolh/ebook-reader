@@ -1,3 +1,8 @@
+---
+summary: How the app is put together — the npm-workspaces monorepo (web/api/shared), layer boundaries, and the upload→store→read data flow.
+updated: 2026-07-07
+---
+
 # Architecture
 
 ## Monorepo (npm workspaces)

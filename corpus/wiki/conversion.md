@@ -1,3 +1,8 @@
+---
+summary: The EPUB→PDF export path — the single stateless Fastify /convert route backed by Calibre ebook-convert, with its limits and error shape.
+updated: 2026-07-02
+---
+
 # Conversion (EPUB→PDF)
 
 The only backend feature. A single stateless Fastify route.

@@ -1,3 +1,8 @@
+---
+summary: The enforced "Quiet Paper" visual language (D27) — theme tokens, Playfair/Source Serif 4/Inter type roles, spacing/elevation rules, and the frontend conformance checklist.
+updated: 2026-07-07
+---
+
 # Design — "Quiet Paper"
 
 The single source of truth for the app's **visual language**. Every frontend

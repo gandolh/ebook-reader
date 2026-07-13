@@ -1,3 +1,8 @@
+---
+summary: What ebook-reader is in a paragraph — a personal, single-user, persistent-library PDF/EPUB reader; the orientation page.
+updated: 2026-07-07
+---
+
 # Overview
 
 **ebook-reader** is a personal, single-user ebook reader with a **persistent

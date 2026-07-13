@@ -1,3 +1,8 @@
+---
+summary: The reader experience — PDF + EPUB renderers sharing Kindle-style chrome: nav, TOC, in-book search, themes, the draggable progress rail, and resume.
+updated: 2026-07-07
+---
+
 # Reader
 
 The heart of the app. Two renderers (PDF, EPUB) sharing one **Kindle-style

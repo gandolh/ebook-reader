@@ -1,3 +1,8 @@
+---
+summary: The genuinely unresolved threads only — each deleted the moment it's answered (history lives in status.md + log.md).
+updated: 2026-07-07
+---
+
 # Open Questions
 
 Only genuinely unresolved threads. Delete each the moment it's answered.

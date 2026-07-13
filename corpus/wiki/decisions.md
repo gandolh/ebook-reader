@@ -1,3 +1,8 @@
+---
+summary: Locked tech/design decisions (D1–D29) — the settled calls future briefs and reviews must not relitigate without an explicit revisit + log note.
+updated: 2026-07-08
+---
+
 # Decisions (locked)
 
 Settled choices from the grill session. Don't relitigate without an explicit

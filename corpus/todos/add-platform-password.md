@@ -14,5 +14,5 @@ Gate the platform behind a single shared password, requested from the frontend.
 One password for the whole platform — no per-user accounts. The frontend
 prompts for it before granting access.
 
-> Promoted to [briefs/todo/09-platform-password.md](../briefs/todo/09-platform-password.md)
+> Promoted to [briefs/done/09-platform-password.md](../briefs/done/09-platform-password.md)
 > (2026-07-07). Design locked: API-enforced, localStorage persistence.

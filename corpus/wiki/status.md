@@ -1,3 +1,8 @@
+---
+summary: Dated snapshot of current state — a one-liner per brief/area and where things stand right now. The living dashboard.
+updated: 2026-07-07
+---
+
 # Status — 2026-07-07
 
 **Latest:** ✅ **Brief 10 — loading feedback** (2026-07-07 pm, **uncommitted by
