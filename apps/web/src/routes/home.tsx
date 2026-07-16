@@ -1,14 +1,30 @@
-import { useNavigate } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
-import { LIBRARY_SORTS, type LibraryBook, type LibrarySort } from "@ebook-reader/shared";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { useCallback, useState, type ReactNode } from "react";
+import {
+  LIBRARY_GROUPS,
+  LIBRARY_SORTS,
+  type LibraryBook,
+  type LibraryGroup,
+  type LibrarySort,
+} from "@ebook-reader/shared";
 
 import { useApplyTheme } from "../reader/chrome/use-apply-theme";
 import { useDeleteBook, useLibraryList, useOfflineDownload, useUploadBook } from "../lib/use-library";
 import { useReconnectProgressSync } from "../lib/use-progress-sync";
+import {
+  readGroupByPref,
+  readGroupViewPref,
+  writeGroupByPref,
+  writeGroupViewPref,
+  type GroupView,
+} from "../lib/library-prefs";
 import { LibraryHeader } from "../library/LibraryHeader";
 import { UploadZone } from "../library/UploadZone";
 import { CoverCard } from "../library/CoverCard";
+import { GroupedGallery } from "../library/GroupedGallery";
 import { OfflineBanner } from "../library/OfflineBanner";
+
+const routeApi = getRouteApi("/");
 
 /**
  * `/` — the **library home** (wiki/reader.md "Library home", D24). Header +
@@ -35,13 +51,27 @@ const SORT_LABELS: Record<LibrarySort, string> = {
   author: "Author",
 };
 
+const GROUP_LABELS: Record<LibraryGroup, string> = {
+  none: "None",
+  author: "Author",
+  series: "Series",
+  subject: "Subject",
+};
+
 export function Home() {
   // The library themes with the shared reader theme (header toggle drives it).
   useApplyTheme();
 
   const navigate = useNavigate();
+  // The Stacks drill-in target lives in the URL (`?g`), not component state, so
+  // Back/refresh/offline all behave (brief 21).
+  const { g: focusedGroup } = routeApi.useSearch();
 
   const [sort, setSort] = useState<LibrarySort>("recent");
+  // Group-by + view are durable preferences persisted to localStorage, seeded
+  // lazily from it (same mechanism as the reader's paged⇄scroll toggle).
+  const [groupBy, setGroupByState] = useState<LibraryGroup>(readGroupByPref);
+  const [view, setViewState] = useState<GroupView>(readGroupViewPref);
 
   const { books, isOffline, isLoading, isError, refetch } = useLibraryList(sort);
   const offlineDownload = useOfflineDownload();
@@ -50,6 +80,35 @@ export function Home() {
   const upload = useUploadBook();
   const remove = useDeleteBook();
 
+  const grouping = groupBy !== "none";
+
+  // Drop the drill-in `?g` (used when it would no longer make sense: leaving
+  // Stacks, or re-grouping into a different set of groups).
+  const clearFocus = useCallback(() => {
+    void navigate({ to: "/", search: (prev) => ({ ...prev, g: undefined }) });
+  }, [navigate]);
+
+  const focusGroup = useCallback(
+    (groupKey: string) => {
+      void navigate({ to: "/", search: (prev) => ({ ...prev, g: groupKey }) });
+    },
+    [navigate],
+  );
+
+  function changeGroupBy(next: LibraryGroup) {
+    setGroupByState(next);
+    writeGroupByPref(next);
+    // A new grouping invalidates any focused group key.
+    clearFocus();
+  }
+
+  function changeView(next: GroupView) {
+    setViewState(next);
+    writeGroupViewPref(next);
+    // Shelves has no drill-in; leaving Stacks abandons the focused group.
+    if (next === "shelves") clearFocus();
+  }
+
   // Navigate immediately — /read's hydrate hook does the download and shows a
   // progress screen (brief 10). Downloading here first left the library frozen
   // with no feedback for the whole transfer.
@@ -57,9 +116,42 @@ export function Home() {
     void navigate({ to: "/read", search: { format: book.format, book: book.id } });
   }
 
+  // Shared cover renderer so grouping never forks CoverCard behavior — the flat
+  // gallery, shelves, and the drilled group grid all render the identical card.
+  const renderCover = useCallback(
+    (book: LibraryBook): ReactNode => (
+      <CoverCard
+        key={book.id}
+        book={book}
+        onOpen={openBook}
+        onDelete={(b) => remove.mutate(b)}
+        deleteDisabled={isOffline}
+        offline={
+          offlineDownload.isSupported
+            ? {
+                state: offlineDownload.stateOf(book.id),
+                progress: offlineDownload.progressOf(book.id),
+                canDownload: !isOffline,
+                onDownload: () => offlineDownload.download(book),
+                onRemove: () => offlineDownload.remove(book.id),
+              }
+            : undefined
+        }
+      />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isOffline, offlineDownload, remove],
+  );
+
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-5 py-8 text-ink md:px-16">
-      <LibraryHeader storage={offlineDownload.storage} downloadedCount={offlineDownload.downloaded.length} />
+      <LibraryHeader
+        storage={offlineDownload.storage}
+        downloadedCount={offlineDownload.downloaded.length}
+        view={view}
+        onViewChange={changeView}
+        showViewToggle={grouping && books.length > 0}
+      />
 
       {isOffline && <OfflineBanner />}
 
@@ -75,20 +167,36 @@ export function Home() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
           <h2 className="font-display text-3xl font-semibold text-ink">Recent Reads</h2>
           {books.length > 0 && (
-            <label className="flex items-center gap-2 text-sm text-ink-variant">
-              Sort by:
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as LibrarySort)}
-                className="rounded border border-line-soft bg-paper-raised px-2 py-1 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
-              >
-                {LIBRARY_SORTS.map((s) => (
-                  <option key={s} value={s}>
-                    {SORT_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-ink-variant">
+                Group by:
+                <select
+                  value={groupBy}
+                  onChange={(e) => changeGroupBy(e.target.value as LibraryGroup)}
+                  className="rounded border border-line-soft bg-paper-raised px-2 py-1 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {LIBRARY_GROUPS.map((grp) => (
+                    <option key={grp} value={grp}>
+                      {GROUP_LABELS[grp]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink-variant">
+                Sort by:
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as LibrarySort)}
+                  className="rounded border border-line-soft bg-paper-raised px-2 py-1 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {LIBRARY_SORTS.map((s) => (
+                    <option key={s} value={s}>
+                      {SORT_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           )}
         </div>
 
@@ -113,28 +221,19 @@ export function Home() {
             title="Your library is empty"
             body="Upload your first book above to get started — it'll show up here as a cover card."
           />
+        ) : groupBy !== "none" ? (
+          <GroupedGallery
+            books={books}
+            groupBy={groupBy}
+            view={view}
+            focusedGroup={focusedGroup}
+            onFocusGroup={focusGroup}
+            onClearFocus={clearFocus}
+            renderCover={renderCover}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
-            {books.map((book) => (
-              <CoverCard
-                key={book.id}
-                book={book}
-                onOpen={openBook}
-                onDelete={(b) => remove.mutate(b)}
-                deleteDisabled={isOffline}
-                offline={
-                  offlineDownload.isSupported
-                    ? {
-                        state: offlineDownload.stateOf(book.id),
-                        progress: offlineDownload.progressOf(book.id),
-                        canDownload: !isOffline,
-                        onDownload: () => offlineDownload.download(book),
-                        onRemove: () => offlineDownload.remove(book.id),
-                      }
-                    : undefined
-                }
-              />
-            ))}
+            {books.map(renderCover)}
           </div>
         )}
       </section>

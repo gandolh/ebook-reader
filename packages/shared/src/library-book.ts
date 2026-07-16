@@ -14,6 +14,15 @@ import { fileTypeSchema } from "./file-validation.js";
  * the client fetches bytes via `/library/:id/file` and `/library/:id/cover`.
  */
 
+/**
+ * Where a library book came from: a user `upload` (the default) or a catalog
+ * `import` (brief 22). Stored on the row and surfaced on the wire so the client
+ * can badge imported books and cross-reference them against a catalog id.
+ */
+export const BOOK_SOURCES = ["upload", "gutenberg"] as const;
+export const bookSourceSchema = z.enum(BOOK_SOURCES);
+export type BookSource = z.infer<typeof bookSourceSchema>;
+
 /** A book as seen by the client (no server-side paths). */
 export const libraryBookSchema = z.object({
   id: z.string(),
@@ -21,6 +30,23 @@ export const libraryBookSchema = z.object({
   /** Author, or null when it couldn't be extracted. */
   author: z.string().nullable(),
   format: fileTypeSchema,
+  /**
+   * Provenance (brief 22): "upload" for user uploads (the default so existing
+   * rows and the upload path stay correct), "gutenberg" for catalog imports.
+   */
+  source: bookSourceSchema.default("upload"),
+  /**
+   * Upstream id within `source` — the Project Gutenberg id (as a string) for a
+   * "gutenberg" import, null for an upload. The `/discover` UI matches this
+   * against catalog results to show an "In library" badge.
+   */
+  sourceId: z.string().nullable(),
+  /** Series name (e.g. "Mistborn"), or null when the file carries none. */
+  series: z.string().nullable(),
+  /** Position within `series` (e.g. 2 for book two), or null when unknown. */
+  seriesIndex: z.number().nullable(),
+  /** All subject/genre tags (dc:subject / PDF Subject+Keywords); [] when none. */
+  subjects: z.array(z.string()),
   /** Whether a cover thumbnail was extracted (drives fallback tile in the UI). */
   hasCover: z.boolean(),
   /** Original file size in bytes. */
@@ -61,3 +87,8 @@ export type UpdateProgressRequest = z.infer<typeof updateProgressSchema>;
 export const LIBRARY_SORTS = ["recent", "title", "author"] as const;
 export const librarySortSchema = z.enum(LIBRARY_SORTS);
 export type LibrarySort = z.infer<typeof librarySortSchema>;
+
+/** Grouping options for the gallery ("none" = today's flat gallery). */
+export const LIBRARY_GROUPS = ["none", "author", "series", "subject"] as const;
+export const libraryGroupSchema = z.enum(LIBRARY_GROUPS);
+export type LibraryGroup = z.infer<typeof libraryGroupSchema>;

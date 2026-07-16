@@ -5,6 +5,7 @@ import { formatSchema } from "@ebook-reader/shared";
 import { RootLayout } from "./routes/root-layout";
 import { Home } from "./routes/home";
 import { Read } from "./routes/read";
+import { Discover } from "./routes/discover";
 
 /**
  * Code-based route tree (no file-based plugin — keeps the shell dependency-
@@ -16,9 +17,19 @@ const rootRoute = createRootRoute({
   component: RootLayout,
 });
 
+// The library gallery's Stacks drill-in (brief 21): the focused group's key is
+// carried in the URL (not component state) so browser Back returns to the stack
+// index, a refresh restores the drilled page, and the offline fallback can
+// render it. Absent = the stack index (or, in Shelves view, ignored). Copies the
+// `readSearchSchema` pattern below — a Zod-validated optional string param.
+const homeSearchSchema = z.object({
+  g: z.string().optional(),
+});
+
 const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
+  validateSearch: homeSearchSchema,
   component: Home,
 });
 
@@ -43,7 +54,25 @@ const readRoute = createRoute({
   component: Read,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, readRoute]);
+// `/discover` (brief 22b) — browse + import Project Gutenberg books. Copies the
+// `homeSearchSchema`/`readSearchSchema` pattern: a Zod-validated search schema
+// so the search box, topic, language, and page all deep-link and survive a
+// refresh (the URL is the source of truth the catalog query reads).
+const discoverSearchSchema = z.object({
+  q: z.string().optional(),
+  topic: z.string().optional(),
+  lang: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+});
+
+const discoverRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/discover",
+  validateSearch: discoverSearchSchema,
+  component: Discover,
+});
+
+const routeTree = rootRoute.addChildren([homeRoute, readRoute, discoverRoute]);
 
 // `basepath` matches Vite's `base` (import.meta.env.BASE_URL) so client-side
 // routing stays under the deploy sub-path (e.g. /ebook-reader/). It's "/" in dev,

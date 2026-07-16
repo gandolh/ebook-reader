@@ -51,12 +51,35 @@ export {
   updateProgressSchema,
   LIBRARY_SORTS,
   librarySortSchema,
+  LIBRARY_GROUPS,
+  libraryGroupSchema,
+  BOOK_SOURCES,
+  bookSourceSchema,
 } from "./library-book.js";
 export type {
   LibraryBook,
   UpdateProgressRequest,
   LibrarySort,
+  LibraryGroup,
+  BookSource,
 } from "./library-book.js";
+
+// --- Catalog contract (brief 22) ------------------------------------------
+export {
+  CATALOG_SORTS,
+  catalogSortSchema,
+  catalogSearchParamsSchema,
+  catalogBookSchema,
+  catalogSearchResponseSchema,
+  importRequestSchema,
+} from "./catalog.js";
+export type {
+  CatalogSort,
+  CatalogSearchParams,
+  CatalogBook,
+  CatalogSearchResponse,
+  ImportRequest,
+} from "./catalog.js";
 
 // --- Auth contract (brief 09) ----------------------------------------------
 export {

@@ -83,3 +83,14 @@ export const DB_PATH = resolve(DATA_DIR, "library.db");
 export const LIBRARY_FILES_DIR = resolve(API_ROOT, "library");
 /** Extracted cover thumbnails: `images/thumbnails/<id>.jpg`. */
 export const THUMBNAILS_DIR = resolve(API_ROOT, "images", "thumbnails");
+
+/**
+ * Base URL of the Gutendex instance the catalog proxy talks to (brief 22).
+ * Env-overridable (`GUTENDEX_BASE_URL`) for a self-hosted mirror or tests;
+ * defaults to the public community instance. Not part of the required .env
+ * contract — an optional deploy override, like `LIBRARY_DATA_DIR`. The trailing
+ * slash is trimmed so URL joins are predictable.
+ */
+export const GUTENDEX_BASE_URL = (
+  process.env.GUTENDEX_BASE_URL?.trim() || "https://gutendex.com"
+).replace(/\/+$/, "");

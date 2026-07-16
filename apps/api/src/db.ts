@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
-import type { FileType, LibraryBook, LibrarySort } from "@ebook-reader/shared";
+import type { BookSource, FileType, LibraryBook, LibrarySort } from "@ebook-reader/shared";
 import { DATA_DIR, DB_PATH } from "./config.js";
 
 /**
@@ -22,6 +22,25 @@ export interface BookRow {
   progress: number;
   created_at: string;
   last_opened_at: string | null;
+  /** Series name, or null when the file carries none (brief 21). */
+  series: string | null;
+  /** Position within `series`, or null when unknown (brief 21). */
+  series_index: number | null;
+  /**
+   * JSON-encoded `string[]` of subject/genre tags (brief 21), or null for a row
+   * that predates the column and hasn't been backfilled yet — the backfill uses
+   * `subjects IS NULL` as its "needs re-scan" sentinel, so a scanned-but-empty
+   * book stores `'[]'`, never null.
+   */
+  subjects: string | null;
+  /**
+   * Provenance (brief 22): "upload" for user uploads, "gutenberg" for catalog
+   * imports. Column has `DEFAULT 'upload'` so existing rows and the upload path
+   * are correct without a backfill.
+   */
+  source: BookSource;
+  /** Upstream id within `source` (the Gutenberg id for imports), else null. */
+  source_id: string | null;
 }
 
 /**
@@ -102,12 +121,42 @@ db.exec(`
 // Enforce the sessions→users foreign key (off by default in SQLite).
 db.pragma("foreign_keys = ON");
 
+/**
+ * Idempotent column adds for the `books` table (brief 21). SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, so guard each with `pragma table_info`. New
+ * columns default to NULL on existing rows; the startup backfill fills them
+ * (`subjects IS NULL` is the sentinel — see `listBooksNeedingMetadata`).
+ */
+function ensureBookColumns(): void {
+  const existing = new Set(
+    (db.pragma("table_info(books)") as { name: string }[]).map((c) => c.name),
+  );
+  const additions: Record<string, string> = {
+    series: "TEXT",
+    series_index: "REAL",
+    subjects: "TEXT",
+    // Provenance (brief 22). NOT NULL DEFAULT is legal in SQLite's ADD COLUMN
+    // because it supplies a value for every existing row, so uploads keep
+    // source='upload' with no backfill.
+    source: "TEXT NOT NULL DEFAULT 'upload'",
+    source_id: "TEXT",
+  };
+  for (const [name, type] of Object.entries(additions)) {
+    if (!existing.has(name)) {
+      db.exec(`ALTER TABLE books ADD COLUMN ${name} ${type}`);
+    }
+  }
+}
+ensureBookColumns();
+
 const statements = {
   insert: db.prepare<BookRow>(`
     INSERT INTO books (id, title, author, format, file_path, cover_path,
-                       size_bytes, progress, created_at, last_opened_at)
+                       size_bytes, progress, created_at, last_opened_at,
+                       series, series_index, subjects, source, source_id)
     VALUES (@id, @title, @author, @format, @file_path, @cover_path,
-            @size_bytes, @progress, @created_at, @last_opened_at)
+            @size_bytes, @progress, @created_at, @last_opened_at,
+            @series, @series_index, @subjects, @source, @source_id)
   `),
   getById: db.prepare<[string]>("SELECT * FROM books WHERE id = ?"),
   listRecent: db.prepare(
@@ -121,6 +170,19 @@ const statements = {
     "UPDATE books SET last_opened_at = ? WHERE id = ?",
   ),
   remove: db.prepare<[string]>("DELETE FROM books WHERE id = ?"),
+
+  // --- Metadata backfill (brief 21) ----------------------------------------
+  // Rows added before the series/subjects columns existed have subjects=NULL.
+  listNeedingMetadata: db.prepare("SELECT * FROM books WHERE subjects IS NULL"),
+  // COALESCE on author lets a re-scan fill a previously-null author (PDFs) but
+  // never clobber one already stored. `subjects` is set to a JSON array (never
+  // null) so the row drops out of `listNeedingMetadata` and can't loop.
+  updateMetadata: db.prepare<[string | null, number | null, string, string | null, string]>(`
+    UPDATE books
+       SET series = ?, series_index = ?, subjects = ?,
+           author = COALESCE(author, ?)
+     WHERE id = ?
+  `),
 
   // --- Users ---------------------------------------------------------------
   getUserByName: db.prepare<[string]>("SELECT * FROM users WHERE username = ?"),
@@ -174,13 +236,29 @@ export function toLibraryBook(
     title: row.title,
     author: row.author,
     format: row.format,
+    series: row.series,
+    seriesIndex: row.series_index,
+    subjects: parseSubjects(row.subjects),
     hasCover: row.cover_path !== null,
     sizeBytes: row.size_bytes,
     progress: progress.progress,
     locator: progress.locator,
     createdAt: row.created_at,
     lastOpenedAt: row.last_opened_at,
+    source: row.source,
+    sourceId: row.source_id,
   };
+}
+
+/** Decode the JSON `subjects` column to a `string[]` (empty on null/garbage). */
+function parseSubjects(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export function insertBook(row: BookRow): void {
@@ -207,6 +285,32 @@ export function touchOpened(id: string, now: string): void {
 
 export function deleteBook(id: string): void {
   statements.remove.run(id);
+}
+
+/**
+ * Books whose metadata predates the series/subjects columns (subjects IS NULL),
+ * for the one-time startup backfill (brief 21).
+ */
+export function listBooksNeedingMetadata(): BookRow[] {
+  return statements.listNeedingMetadata.all() as BookRow[];
+}
+
+/**
+ * Persist re-scanned series/subject metadata for one book (backfill or a future
+ * re-index). `subjects` is a `string[]` stored as JSON; `author` fills a
+ * previously-null author without overwriting an existing one (COALESCE).
+ */
+export function updateBookMetadata(
+  id: string,
+  meta: { series: string | null; seriesIndex: number | null; subjects: string[]; author: string | null },
+): void {
+  statements.updateMetadata.run(
+    meta.series,
+    meta.seriesIndex,
+    JSON.stringify(meta.subjects),
+    meta.author,
+    id,
+  );
 }
 
 // --- Users & sessions --------------------------------------------------------

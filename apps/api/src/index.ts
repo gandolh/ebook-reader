@@ -11,7 +11,8 @@ import {
   PORT,
 } from "./config.js";
 import { registerConvertRoute } from "./convert-route.js";
-import { registerLibraryRoutes } from "./library-routes.js";
+import { backfillLibraryMetadata, registerLibraryRoutes } from "./library-routes.js";
+import { registerCatalogRoutes } from "./catalog-routes.js";
 
 const app = Fastify({
   logger: {
@@ -57,6 +58,7 @@ app.get("/health", async () => {
 registerAuthRoutes(app);
 registerConvertRoute(app);
 registerLibraryRoutes(app);
+registerCatalogRoutes(app);
 
 /**
  * Startup probe for `ebook-convert` (brief step 2). Missing Calibre is NOT
@@ -88,6 +90,12 @@ async function start(): Promise<void> {
       { maxUploadMb: MAX_UPLOAD_MB, convertTimeoutMs: CONVERT_TIMEOUT_MS },
       "API ready",
     );
+    // Backfill series/subjects metadata for pre-existing rows (brief 21). Fired
+    // off the request path (not awaited) so it never delays readiness; failures
+    // are logged, not fatal.
+    void backfillLibraryMetadata(app.log).catch((err) => {
+      app.log.error({ err }, "library metadata backfill failed");
+    });
   } catch (err) {
     app.log.error(err);
     process.exit(1);

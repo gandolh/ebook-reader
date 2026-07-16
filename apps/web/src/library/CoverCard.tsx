@@ -3,6 +3,7 @@ import type { LibraryBook } from "@ebook-reader/shared";
 
 import { coverUrl } from "../lib/library-api";
 import type { OfflineDownloadStatus } from "../lib/use-library";
+import { CoverFallback } from "./CoverFallback";
 import { OfflineToggle } from "./OfflineToggle";
 
 /** Per-book offline download affordance (brief 20 item 2, rendering side). */
@@ -64,13 +65,7 @@ export function CoverCard({
               className="h-full w-full object-cover"
             />
           ) : (
-            // Typographic fallback tile (the "Dune"/"Design Systems" style).
-            <span className="flex h-full w-full flex-col items-center justify-center gap-3 px-4 text-center">
-              <BookGlyph className="h-8 w-8 text-ink-variant/50" />
-              <span className="font-display text-lg leading-tight font-semibold text-ink">
-                {book.title}
-              </span>
-            </span>
+            <CoverFallback title={book.title} />
           )}
 
           {/* Format badge (design.md chips: label-caps, subtle scrim, no border). */}
@@ -146,15 +141,6 @@ export function CoverCard({
         </div>
       </div>
     </div>
-  );
-}
-
-function BookGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className} aria-hidden>
-      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H12v16H5.5A1.5 1.5 0 0 0 4 20.5z" strokeLinejoin="round" />
-      <path d="M20 4.5A1.5 1.5 0 0 0 18.5 3H12v16h6.5a1.5 1.5 0 0 1 1.5 1.5z" strokeLinejoin="round" />
-    </svg>
   );
 }
 

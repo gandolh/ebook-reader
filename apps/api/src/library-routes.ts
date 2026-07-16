@@ -4,7 +4,12 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createWriteStream } from "node:fs";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type {
+  FastifyBaseLogger,
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+} from "fastify";
 import {
   detectFileType,
   isFileSizeValid,
@@ -19,9 +24,11 @@ import {
   getUserProgress,
   insertBook,
   listBooks,
+  listBooksNeedingMetadata,
   listUserProgress,
   toLibraryBook,
   touchOpened,
+  updateBookMetadata,
   upsertUserProgress,
 } from "./db.js";
 import { extractMeta } from "./extract.js";
@@ -91,7 +98,14 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
       }
     } catch (err) {
       request.log.warn({ err }, "cover/metadata extraction failed");
-      meta = { title: data.filename, author: null, cover: null };
+      meta = {
+        title: data.filename,
+        author: null,
+        series: null,
+        seriesIndex: null,
+        subjects: [],
+        cover: null,
+      };
     }
 
     const now = nowIso();
@@ -106,6 +120,14 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
       progress: 0,
       created_at: now,
       last_opened_at: null,
+      series: meta.series,
+      series_index: meta.seriesIndex,
+      // Stored as a JSON array; never null on insert so it isn't mistaken for a
+      // pre-column row by the metadata backfill (db.ts).
+      subjects: JSON.stringify(meta.subjects),
+      // Uploads are the default provenance (brief 22); imports set 'gutenberg'.
+      source: "upload" as const,
+      source_id: null,
     };
     insertBook(row);
 
@@ -194,4 +216,47 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     if (row.cover_path) await rm(row.cover_path, { force: true });
     return reply.status(204).send();
   });
+}
+
+/**
+ * One-time metadata backfill (brief 21). Rows added before the series/subjects
+ * columns existed have `subjects IS NULL`; re-run extraction against each stored
+ * file and persist the new fields. Best-effort and idempotent:
+ *
+ * - A book whose file is missing/unreadable still gets `subjects=[]` (via
+ *   `updateBookMetadata`) so it drops out of the "needs metadata" set and the
+ *   backfill can't loop forever.
+ * - Runs off the request path (fired from server startup, not awaited by any
+ *   handler); a single row's failure never aborts the rest.
+ */
+export async function backfillLibraryMetadata(log: FastifyBaseLogger): Promise<void> {
+  const pending = listBooksNeedingMetadata();
+  if (pending.length === 0) return;
+  log.info({ count: pending.length }, "library metadata backfill: starting");
+
+  let updated = 0;
+  for (const row of pending) {
+    try {
+      const bytes = await readFile(row.file_path);
+      const meta = await extractMeta(bytes, row.format, row.file_path);
+      updateBookMetadata(row.id, {
+        series: meta.series,
+        seriesIndex: meta.seriesIndex,
+        subjects: meta.subjects,
+        author: meta.author,
+      });
+      updated += 1;
+    } catch (err) {
+      // File gone or unreadable — write empty metadata so the sentinel clears
+      // and this row isn't re-scanned on every startup.
+      log.warn({ err, id: row.id }, "library metadata backfill: file unreadable, storing empty");
+      updateBookMetadata(row.id, {
+        series: null,
+        seriesIndex: null,
+        subjects: [],
+        author: null,
+      });
+    }
+  }
+  log.info({ updated, total: pending.length }, "library metadata backfill: done");
 }
