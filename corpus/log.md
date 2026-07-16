@@ -1,5 +1,125 @@
 # Log
 
+## [2026-07-16] design | UI review implementation: hierarchy, conformance, reader immersion
+
+Screenshot-driven UI review (live browser, desktop 1280 + mobile 390, all three
+themes, findings cross-checked against wiki/design.md D27 and WCAG 2.2),
+published as an artifact, then all three approved tracks implemented.
+**Uncommitted — owner controls.**
+
+**Track A — conformance & polish:** new `components/QuietSelect.tsx` (native
+select restyled to the design.md bottom-border input; `color-scheme` per theme
+in globals.css so UA popups follow dark/sepia) replaces the four unthemed
+selects (home Group/Sort, discover Topic/Language). Card titles 2-line-clamp
+instead of single-line ellipsis ("The Apot…") in `CoverCard` +
+`CatalogResultCard`, with `title=` hover. Lock-screen button: muted
+`paper-container` disabled state + Ink-fill pulse while submitting (was
+50%-opacity gray). Shelf group counts to full `ink-variant` on a chip (the
+70%-opacity value sat below AA at that size); downloads caps label likewise.
+EPUB light reading palette retuned to Quiet Paper (`#ffffff→#fcf9f8`,
+`#2563eb→#30568b` — the D27 merge change had never reached
+`use-epub-theme.ts`). Empty states gained direct actions (Upload an MP3 /
+Browse free classics). **Theme is now a persisted preference**
+(`ebook-reader:theme`, same pattern as pageMode) — it used to reset to light
+on every full load.
+
+**Track B — hierarchy & navigation:** new `components/AppHeader.tsx` (wordmark
+home-link / page actions / theme toggle) shared by `/` and `/discover` — the
+catalog page previously dropped the shell entirely; it also now calls
+`useApplyTheme`. The All/Books/Music/Videos filter + Shelves⇄Stacks toggle
+moved out of the header to sit beside "Recent Reads" with Group/Sort (they
+scope the shelf, not the app). New `library/ContinueReading.tsx` resume strip
+(most recently opened unfinished item within the active type filter — cover,
+2-line title, 2px accent progress, whole-card button) leads the page.
+`UploadZone` gained a `variant`: **hero** (unchanged full dropzone) only while
+the library is empty; otherwise **ambient** — the header's Ink "+ Add to
+library" button opens the picker via a `browseRef` handle and a window-level
+dragenter raises a full-screen "Drop to add" overlay, so drag-drop capability
+survives while upload stops outranking the library. Discover covers render the
+typographic `CoverFallback` UNDER the image with a fade-in on load (lazy rows
+showed dead gray slabs).
+
+**Track C — reader immersion:** auto-hide chrome REINTRODUCED through the seam
+kept for it (`use-auto-hide-chrome.ts`, 3s idle, window activity listeners +
+EPUB rendition click/keydown/relocated forwarding, holds via the store's
+existing `chromeHoldCount`, toolbar pins while focus is within it, chrome
+restored on unmount) — **this reverses the earlier "bars always shown"
+decision, per the owner's approval of review finding F7**. `ReaderToolbar`
+takes `visible` and regrouped to *navigation | view | position*: TOC + search
+moved to the left cluster beside Home (`PdfNavControls`/`EpubNavControls` split
+out of the old monolith controls), zoom/settings/mode stay center, page-jump
+right. Narrow-bar compaction: "Page" label, Go button, % chip, zoom readout,
+and fit-width hide below sm/md so nothing clips at 390px (both were clipping
+before — "'age 1 / 21" at 1280, total+Go+% cut off on mobile). EPUB narrow
+viewports (≤520px) left-align paragraphs (publisher justify + short lines =
+rivers; hyphenation stays on).
+
+**Verified live:** typecheck ×3 clean; desktop light/dark/sepia, discover,
+grouped views; mobile 390 home/reader/lock; auto-hide hide+reveal cycle;
+go-to-page 120/1020 with real input (an earlier "possible bug" report was a
+synthetic-event artifact — the Go button listens on mousedown). Review
+artifact: claude.ai/code/artifact/53b5cecf-f076-48df-baef-5ca176d2500e.
+
+**Follow-up 3 (same day — tap zones; supersedes follow-up 2's always-visible
+circles on touch):** the floating circles overlapped prose on phones (the
+column IS the screen). Researched the convention (Kindle/Books/Kobo: no
+persistent nav while reading — invisible tap zones + swipe; and swipe alone
+fails WCAG 2.5.1, path-based gestures need a single-pointer alternative),
+options artifact claude.ai/code/artifact/ff123472-327d-4d35-b2c0-84fb6057c26c,
+owner chose option A. Implemented: `resolveTapZone` in `chrome/swipe.ts`
+(outer 30% flips, center toggles); EPUB classifies epub.js-relayed clicks —
+`frameElement.getBoundingClientRect().left + clientX` maps the iframe-space
+coordinate into the viewport (raw `clientX` spans ALL laid-out columns; the
+first cut misread every tap as center) — with link/selection guards and no
+overlay elements, so selection is untouched; PDF mirrors it on its content
+row. `useChromeToggle` backs the center tap; on coarse pointers the auto-hide
+hook stops treating bare taps/moves as "reveal" (a silent page flip must not
+pop the toolbar) and `PageNav` circles join the chrome (`pointer-coarse:`
+hidden while reading, shown with the toolbar; fine pointers keep them
+persistent). Scroll mode: any tap toggles chrome. Verified via touch
+emulation: EPUB 118→119→118 and PDF 1→2→1 with chrome staying hidden,
+center-tap toggling both ways; typecheck clean.
+
+**Follow-up 2 (same day, owner feedback — mobile page turning):** the paged-
+mode flip affordance and touch gestures. ① `PageNav`'s full-height edge bars
+(flush to the physical screen edge — unreachable on rounded-corner phones and
+colliding with system back gestures) became two floating 44px circular
+buttons, vertically centered, translucent (`reader-surface/70` + backdrop
+blur so text stays readable underneath) and inset by at least
+`env(safe-area-inset-*)`. ② Swipe-to-turn on both readers (paged mode only):
+gesture math shared in `chrome/swipe.ts` (≥48px travel, 1.5× horizontal
+bias, ≤600ms); EPUB listens on epub.js's relayed `touchstart`/`touchend`
+(iframe touches never reach app listeners), PDF on its own content row with a
+guard that a zoomed page's horizontal pan never turns pages. ③ Found live
+during testing: a rightward swipe with nothing to scroll horizontally
+triggered **Chrome's back-navigation overscroll gesture** and yanked the
+reader out of the book — fixed with `overscroll-behavior-x: none` on
+html/body. ④ Paged PDF turns get a 180ms direction-aware slide-in
+(`page-slide-fwd/back` keyframes, motion-safe only); EPUB turns stay instant
+(animating transform/opacity on the epub iframe's ancestors caches stale
+pixels — the jump-veil comment's constraint). Verified via CDP touch
+emulation at 390px: EPUB 118→119→118, PDF 1→2→1, no history hijack;
+typecheck clean.
+
+**Follow-up (same day, owner feedback):** the library toolbar controls and
+the Discover search. ① `QuietSelect`'s OPEN list is now themed via
+`appearance: base-select` + `::picker(select)` (Chromium 135+; Firefox keeps
+the color-scheme'd native popup) — paper-raised sheet, hairline border,
+paper-container hover/checked fills, accent `::checkmark`; the UA's built-in
+`::picker-icon` is hidden (it doubled the component's chevron). Inline select
+labels went label-caps to match the segmented controls sharing the row. ② The
+All/Books/Music/Videos + Shelves⇄Stacks segments adopt the theme-pill
+treatment (`paper-low` container, active segment `paper-raised` + shadow-sm).
+③ Discover search: root cause of "search doesn't work" was environmental — a
+half-dead API from an interrupted dev-server teardown (a surviving `tsx
+watch` supervisor held a broken :3001); one clean instance fixed it, endpoint
+verified 200 with results. Two UI hardenings landed anyway: an explicit
+Search submit button beside the input (Enter/click commits immediately; the
+debounce's `trimmed === q` guard keeps its later tick a no-op), and visible
+in-flight feedback ("Searching…" pulse + dimmed held-over grid) since
+Gutendex round-trips measured ~7.6 s and `keepPreviousData` otherwise shows a
+frozen page.
+
 ## [2026-07-16] feature | PWA: installable shell + offline reading (briefs 19–20)
 
 Built via orchestrate → plan-split-dispatch (wave 1 = brief 19 senior; wave 2 =
