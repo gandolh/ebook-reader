@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { CatalogBook } from "@ebook-reader/shared";
 
 import { CoverFallback } from "../library/CoverFallback";
@@ -8,6 +9,11 @@ import { useImportBook } from "./use-catalog";
  * portrait / 2px radius / typographic-fallback treatment so the catalog reads
  * as the same visual family as the library grid, plus the "In library" badge
  * and the import action this surface adds.
+ *
+ * The typographic fallback tile renders UNDER the cover image, which fades in
+ * over it on load — so lazy-loading below the fold shows the title on the
+ * spec's tinted tile instead of a dead gray slab, and a failed cover URL
+ * simply stays on the fallback.
  *
  * Each card owns its own `useImportBook` mutation so in-flight/success/error
  * state never leaks between cards — importing one book doesn't disturb the
@@ -22,14 +28,24 @@ export function CatalogResultCard({
 }) {
   const importMutation = useImportBook();
   const author = book.authors[0] ?? "Unknown author";
+  const [coverLoaded, setCoverLoaded] = useState(false);
+  const [coverFailed, setCoverFailed] = useState(false);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-(--radius-cover) bg-paper-container shadow-[0_8px_16px_-6px_rgba(28,27,27,0.18)] ring-1 ring-line-soft/40">
-        {book.coverUrl ? (
-          <img src={book.coverUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : (
-          <CoverFallback title={book.title} />
+        <CoverFallback title={book.title} />
+        {book.coverUrl && !coverFailed && (
+          <img
+            src={book.coverUrl}
+            alt=""
+            loading="lazy"
+            onLoad={() => setCoverLoaded(true)}
+            onError={() => setCoverFailed(true)}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 motion-reduce:transition-none ${
+              coverLoaded ? "opacity-100" : "opacity-0"
+            }`}
+          />
         )}
 
         {inLibrary && (
@@ -40,9 +56,16 @@ export function CatalogResultCard({
       </div>
 
       <div className="flex flex-col gap-0.5">
-        <p className="truncate font-display text-base leading-snug font-semibold text-ink">{book.title}</p>
-        <p className="truncate text-sm text-ink-variant">{author}</p>
-        <p className="text-xs font-semibold tracking-[0.08em] text-ink-variant/80 uppercase">
+        <p
+          title={book.title}
+          className="line-clamp-2 font-display text-base leading-snug font-semibold text-ink"
+        >
+          {book.title}
+        </p>
+        <p title={author} className="truncate text-sm text-ink-variant">
+          {author}
+        </p>
+        <p className="text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
           {book.downloadCount.toLocaleString()} downloads
         </p>
       </div>

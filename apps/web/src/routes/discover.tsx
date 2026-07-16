@@ -2,7 +2,10 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import type { CatalogSearchResponse } from "@ebook-reader/shared";
 
+import { useApplyTheme } from "../reader/chrome/use-apply-theme";
 import { useLibrary } from "../lib/use-library";
+import { AppHeader } from "../components/AppHeader";
+import { QuietSelect } from "../components/QuietSelect";
 import { CatalogResultCard } from "../discover/CatalogResultCard";
 import { useCatalogSearch } from "../discover/use-catalog";
 import { CATALOG_LANGUAGES, CATALOG_TOPICS, DEFAULT_CATALOG_LANGUAGE } from "../discover/catalog-filters";
@@ -29,6 +32,10 @@ const routeApi = getRouteApi("/discover");
  * and the gallery both pick up a fresh import without a manual refetch.
  */
 export function Discover() {
+  // Same shared theme mechanism as the library home, so a direct visit to
+  // /discover (deep link, refresh) still lands in the user's chosen theme.
+  useApplyTheme();
+
   const navigate = useNavigate();
   const search = routeApi.useSearch();
 
@@ -111,70 +118,92 @@ export function Discover() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-5 py-8 text-ink md:px-16">
-      <header className="flex flex-col gap-3 border-b border-line-soft/50 pb-5">
-        <Link to="/" className="w-fit font-ui text-sm text-ink-variant transition hover:text-accent">
-          ‹ Back to library
-        </Link>
-        <div className="flex flex-col gap-1">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Discover</h1>
-          <p className="text-sm text-ink-variant">Browse and import books from Project Gutenberg.</p>
-        </div>
+      {/* The shared app shell (wordmark home link + theme toggle) persists here
+          — /discover used to drop it entirely, stranding the user without nav
+          or the theme control. */}
+      <AppHeader
+        actions={
+          <Link
+            to="/"
+            className="rounded border border-line-soft/70 px-4 py-2 font-ui text-sm font-medium text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            ‹ Back to library
+          </Link>
+        }
+      />
+
+      <header className="flex flex-col gap-1">
+        <h1 className="font-display text-3xl font-semibold text-ink">Discover</h1>
+        <p className="text-sm text-ink-variant">Browse and import books from Project Gutenberg.</p>
       </header>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <label className="flex flex-1 flex-col gap-1.5 sm:max-w-sm">
-          <span className="font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
+        {/* Explicit submit alongside the debounced live search: Enter or the
+            button commits the query immediately (the debounce effect's
+            `trimmed === q` guard keeps its later tick a no-op). */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const trimmed = searchInput.trim();
+            void navigate({
+              to: "/discover",
+              search: (prev) => ({ ...prev, q: trimmed || undefined, page: undefined }),
+            });
+          }}
+          className="flex flex-1 items-end gap-3 sm:max-w-md"
+        >
+          <label className="flex flex-1 flex-col gap-1.5">
+            <span className="font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
+              Search
+            </span>
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Title or author…"
+              className="border-b border-line-soft bg-transparent px-1 py-1.5 font-ui text-sm text-ink outline-none transition hover:border-line focus:border-b-2 focus:border-accent"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded border border-line-soft px-4 py-1.5 font-ui text-sm font-medium text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+          >
             Search
-          </span>
-          <input
-            type="search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Title or author…"
-            className="border-b border-line-soft bg-transparent px-1 py-1.5 font-ui text-sm text-ink outline-none transition focus:border-b-2 focus:border-accent"
-          />
-        </label>
+          </button>
+        </form>
 
         <div className="flex flex-wrap items-end gap-4">
-          <label className="flex flex-col gap-1.5">
-            <span className="font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
-              Topic
-            </span>
-            <select
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="rounded border border-line-soft bg-paper-raised px-2 py-1.5 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              <option value="">All topics</option>
-              {CATALOG_TOPICS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1.5">
-            <span className="font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
-              Language
-            </span>
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-              className="rounded border border-line-soft bg-paper-raised px-2 py-1.5 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              {CATALOG_LANGUAGES.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <QuietSelect
+            stacked
+            label="Topic"
+            value={topic}
+            onChange={setTopic}
+            options={[
+              { value: "", label: "All topics" },
+              ...CATALOG_TOPICS.map((t) => ({ value: t, label: t })),
+            ]}
+          />
+          <QuietSelect
+            stacked
+            label="Language"
+            value={lang}
+            onChange={setLang}
+            options={CATALOG_LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
+          />
         </div>
       </div>
 
       <section aria-label="Catalog results" className="flex flex-col gap-5">
-        <h2 className="font-display text-2xl font-semibold text-ink">{heading}</h2>
+        <div className="flex items-baseline gap-3">
+          <h2 className="font-display text-2xl font-semibold text-ink">{heading}</h2>
+          {/* Gutendex round-trips can take several seconds; without a signal the
+              held-over previous results read as "search is broken". */}
+          {catalog.isFetching && !catalog.isLoading && (
+            <span role="status" className="font-ui text-sm text-ink-variant motion-safe:animate-pulse">
+              Searching…
+            </span>
+          )}
+        </div>
 
         {catalog.isLoading ? (
           <CatalogSkeleton />
@@ -222,7 +251,13 @@ function CatalogResults({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Dim the held-over results while a new query is in flight so the page
+          visibly reacts to a search (Gutendex can take seconds). */}
+      <div
+        className={`grid grid-cols-2 gap-x-6 gap-y-8 transition-opacity sm:grid-cols-3 lg:grid-cols-5 ${
+          loadingMore ? "opacity-50" : ""
+        }`}
+      >
         {data.results.map((book) => (
           <CatalogResultCard
             key={`${book.id}-${page}`}

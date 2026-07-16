@@ -154,6 +154,28 @@ function writeTocSidebarPref(open: boolean) {
   }
 }
 
+// The theme is a durable UI preference too (2026-07-16 UI review): without
+// persistence every full page load (deep link, refresh, /discover navigation)
+// snapped a dark/sepia user back to light. Same best-effort pattern.
+const THEME_KEY = "ebook-reader:theme";
+
+function readThemePref(): Theme {
+  try {
+    const value = localStorage.getItem(THEME_KEY);
+    return value === "sepia" || value === "dark" ? value : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function writeThemePref(theme: Theme) {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* preference persistence is best-effort */
+  }
+}
+
 // Reading mode is the other durable UI preference (chunk 11). Persisted the same
 // best-effort way as the sidebar: a single localStorage key, guarded so SSR/no-
 // storage environments fall back to the "paged" default.
@@ -176,7 +198,7 @@ function writePageModePref(mode: PageMode) {
 }
 
 const initialState = {
-  theme: "light" as Theme,
+  theme: readThemePref(),
   fontSettings: DEFAULT_FONT_SETTINGS,
   currentLocation: null as ReaderLocation,
   chromeVisible: true,
@@ -194,7 +216,11 @@ const initialState = {
 export const useReaderStore = create<ReaderState>((set) => ({
   ...initialState,
 
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) =>
+    set(() => {
+      writeThemePref(theme);
+      return { theme };
+    }),
   setFontSettings: (fontSettings) =>
     set((state) => ({
       fontSettings: { ...state.fontSettings, ...fontSettings },

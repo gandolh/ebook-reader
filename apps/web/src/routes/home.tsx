@@ -1,5 +1,5 @@
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   LIBRARY_GROUPS,
   LIBRARY_SORTS,
@@ -22,8 +22,11 @@ import {
   type GroupView,
   type LibraryTypeFilter,
 } from "../lib/library-prefs";
-import { LibraryHeader } from "../library/LibraryHeader";
-import { UploadZone } from "../library/UploadZone";
+import { AppHeader } from "../components/AppHeader";
+import { QuietSelect } from "../components/QuietSelect";
+import { StorageCaption, TypeFilterControl, ViewToggle } from "../library/LibraryHeader";
+import { UploadZone, type UploadZoneHandle } from "../library/UploadZone";
+import { ContinueReading, pickResumeBook } from "../library/ContinueReading";
 import { CoverCard } from "../library/CoverCard";
 import { GroupedGallery } from "../library/GroupedGallery";
 import { OfflineBanner } from "../library/OfflineBanner";
@@ -31,22 +34,25 @@ import { OfflineBanner } from "../library/OfflineBanner";
 const routeApi = getRouteApi("/");
 
 /**
- * `/` — the **library home** (wiki/reader.md "Library home", D24). Header +
- * "Add to Library" dropzone + a cover-card gallery of saved books. Styled per
- * wiki/design.md ("Quiet Paper"). Replaces the old one-step uploader; the
- * dropzone UX survives inside it.
+ * `/` — the **library home** (wiki/reader.md "Library home", D24), hierarchy-
+ * first: the shared `AppHeader` (wordmark / Browse catalogs / Add / theme),
+ * then a "Continue reading" resume strip for the most recently opened
+ * unfinished item, then the cover-card gallery. Styled per wiki/design.md
+ * ("Quiet Paper").
+ *
+ * Uploading: with an EMPTY library the full "Add to Library" dropzone is the
+ * hero (first-run job = get a book in). Once the library has content the
+ * uploader goes ambient — the header's Ink "Add to library" button opens the
+ * picker, and dragging a file anywhere over the window raises a full-screen
+ * drop target (see `UploadZone`) — so resuming a read outranks uploading.
  *
  * Opening a card fetches the stored file (`GET /library/:id/file`) into the
  * Zustand handoff seam the readers already consume, then navigates to `/read`.
  *
- * Brief 20 (offline reading) adopts the offline-aware `useLibraryList` in
- * place of the plain `useLibrary` fetch: `isOffline` means the grid below is
- * showing cached downloaded-book rows because `GET /library` failed, which
- * drives the banner and disables the online-only actions (upload, remove,
- * starting a new download — removing a download stays enabled, it's local).
- * `useOfflineDownload` drives the per-card toggle + the header's storage
- * caption. `useReconnectProgressSync` is mounted here (once) because this is
- * where the live library rows are known, per its own contract.
+ * Brief 20 (offline reading) adopts the offline-aware `useLibraryList`:
+ * `isOffline` means the grid below is showing cached downloaded-book rows
+ * because `GET /library` failed, which drives the banner and disables the
+ * online-only actions (upload, remove, starting a new download).
  */
 
 const SORT_LABELS: Record<LibrarySort, string> = {
@@ -92,8 +98,10 @@ export function Home() {
 
   const upload = useUploadBook();
   const remove = useDeleteBook();
+  const uploadHandle = useRef<UploadZoneHandle | null>(null);
 
   const grouping = groupBy !== "none";
+  const hasBooks = books.length > 0;
 
   // Applied BEFORE grouping so grouping/shelves/stacks operate on the
   // filtered set (e.g. "Music" narrows to tracks, which then group by
@@ -104,6 +112,10 @@ export function Home() {
     () => (typeFilter === "all" ? books : books.filter((b) => (b.kind ?? "book") === typeFilter)),
     [books, typeFilter],
   );
+
+  // The resume strip's subject: most recently opened, unfinished item within
+  // the ACTIVE type filter (so the Music tab resumes a track, not a book).
+  const resumeBook = useMemo(() => pickResumeBook(filteredBooks), [filteredBooks]);
 
   // Drop the drill-in `?g` (used when it would no longer make sense: leaving
   // Stacks, or re-grouping into a different set of groups).
@@ -174,62 +186,82 @@ export function Home() {
     [isOffline, offlineDownload, remove],
   );
 
+  const browse = () => uploadHandle.current?.browse();
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-5 py-8 text-ink md:px-16">
-      <LibraryHeader
-        storage={offlineDownload.storage}
-        downloadedCount={offlineDownload.downloaded.length}
-        view={view}
-        onViewChange={changeView}
-        showViewToggle={grouping && filteredBooks.length > 0}
-        typeFilter={typeFilter}
-        onTypeFilterChange={changeTypeFilter}
-        showTypeFilter={books.length > 0}
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-5 py-8 text-ink md:px-16">
+      <AppHeader
+        caption={
+          <StorageCaption
+            storage={offlineDownload.storage}
+            downloadedCount={offlineDownload.downloaded.length}
+          />
+        }
+        actions={
+          <>
+            <Link
+              to="/discover"
+              className="rounded border border-line-soft/70 px-4 py-2 font-ui text-sm font-medium text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              Browse catalogs
+            </Link>
+            {hasBooks && (
+              <button
+                type="button"
+                onClick={browse}
+                disabled={upload.isPending || isOffline}
+                title={isOffline ? "Requires connection" : undefined}
+                className="rounded bg-ink-fill px-4 py-2 font-ui text-sm font-semibold text-on-ink-fill transition hover:opacity-90 disabled:bg-paper-container disabled:text-ink-variant"
+              >
+                {upload.isPending ? "Uploading…" : "+ Add to library"}
+              </button>
+            )}
+          </>
+        }
       />
 
       {isOffline && <OfflineBanner />}
 
-      <UploadZone onFile={(file) => upload.mutate(file)} busy={upload.isPending} disabled={isOffline} />
+      {/* Empty library: the full dropzone IS the hero (first-run job = add a
+          book). Established library: the uploader goes ambient — header button
+          + whole-window drag target — and the resume strip leads. */}
+      <UploadZone
+        onFile={(file) => upload.mutate(file)}
+        busy={upload.isPending}
+        disabled={isOffline}
+        variant={hasBooks || isLoading ? "ambient" : "hero"}
+        browseRef={uploadHandle}
+      />
 
       {upload.isError && (
-        <p role="alert" className="-mt-6 rounded border border-danger/40 bg-danger-soft/50 px-4 py-2.5 text-sm text-danger">
+        <p role="alert" className="-mt-4 rounded border border-danger/40 bg-danger-soft/50 px-4 py-2.5 text-sm text-danger">
           Upload failed. Is the API running? Please try again.
         </p>
       )}
 
+      {resumeBook && <ContinueReading book={resumeBook} onOpen={openBook} />}
+
       <section aria-label="Your library" className="flex flex-col gap-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-baseline lg:justify-between lg:gap-4">
           <h2 className="font-display text-3xl font-semibold text-ink">Recent Reads</h2>
-          {books.length > 0 && (
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-ink-variant">
-                Group by:
-                <select
-                  value={groupBy}
-                  onChange={(e) => changeGroupBy(e.target.value as LibraryGroup)}
-                  className="rounded border border-line-soft bg-paper-raised px-2 py-1 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
-                >
-                  {LIBRARY_GROUPS.map((grp) => (
-                    <option key={grp} value={grp}>
-                      {GROUP_LABELS[grp]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink-variant">
-                Sort by:
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as LibrarySort)}
-                  className="rounded border border-line-soft bg-paper-raised px-2 py-1 font-ui text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
-                >
-                  {LIBRARY_SORTS.map((s) => (
-                    <option key={s} value={s}>
-                      {SORT_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          {hasBooks && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <TypeFilterControl value={typeFilter} onChange={changeTypeFilter} />
+              {grouping && filteredBooks.length > 0 && (
+                <ViewToggle view={view} onViewChange={changeView} />
+              )}
+              <QuietSelect
+                label="Group by"
+                value={groupBy}
+                onChange={changeGroupBy}
+                options={LIBRARY_GROUPS.map((g) => ({ value: g, label: GROUP_LABELS[g] }))}
+              />
+              <QuietSelect
+                label="Sort by"
+                value={sort}
+                onChange={setSort}
+                options={LIBRARY_SORTS.map((s) => ({ value: s, label: SORT_LABELS[s] }))}
+              />
             </div>
           )}
         </div>
@@ -254,11 +286,43 @@ export function Home() {
           <EmptyState
             title="Your library is empty"
             body="Upload your first book above to get started — it'll show up here as a cover card."
+            action={
+              <Link
+                to="/discover"
+                className="rounded border border-line-soft px-4 py-1.5 font-ui text-sm font-medium text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                Browse free classics
+              </Link>
+            }
           />
         ) : filteredBooks.length === 0 ? (
           <EmptyState
             title={`No ${typeFilter === "all" ? "items" : TYPE_FILTER_NOUNS[typeFilter]} yet`}
-            body="Try a different filter above, or upload something new."
+            body="Try a different filter above, or add something new."
+            action={
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={browse}
+                  disabled={isOffline}
+                  className="rounded border border-line-soft px-4 py-1.5 font-ui text-sm font-medium text-ink-variant transition hover:text-ink disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {typeFilter === "audio"
+                    ? "Upload an MP3"
+                    : typeFilter === "video"
+                      ? "Upload a video"
+                      : "Upload a file"}
+                </button>
+                {(typeFilter === "book" || typeFilter === "all") && (
+                  <Link
+                    to="/discover"
+                    className="rounded border border-line-soft px-4 py-1.5 font-ui text-sm font-medium text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    Browse free classics
+                  </Link>
+                )}
+              </div>
+            }
           />
         ) : groupBy !== "none" ? (
           <GroupedGallery

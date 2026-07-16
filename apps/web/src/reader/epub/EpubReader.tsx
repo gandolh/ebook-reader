@@ -21,6 +21,8 @@ import {
   ProgressRail,
   ReaderHeader,
   ReaderToolbar,
+  resolveSwipe,
+  resolveTapZone,
   SearchPanel,
   SettingsPopover,
   ToolbarButton,
@@ -30,9 +32,10 @@ import {
   type TocEntry,
   useApplyTheme,
   useAutoHideChrome,
+  useChromeToggle,
   usePageNavKeys,
 } from "../chrome";
-import { EpubControls } from "./EpubControls";
+import { EpubNavControls, EpubViewControls } from "./EpubControls";
 import { EpubSettings, fontStackFor } from "./EpubSettings";
 import { useEpubToc } from "./use-epub-toc";
 import { useEpubTheme, themeRules } from "./use-epub-theme";
@@ -193,9 +196,11 @@ export function EpubReader({ file }: { file: File }) {
   // store so other chrome can read it).
   const cfi = typeof currentLocation === "string" ? currentLocation : null;
 
-  // Shared chrome behaviors.
+  // Shared chrome behaviors. `revealChrome` resets the auto-hide idle timer;
+  // window-level activity is handled by the hook itself, and activity inside
+  // the epub iframe (which never reaches window listeners) is forwarded below.
   useApplyTheme();
-  useAutoHideChrome(); // now only guarantees the bars are visible on mount
+  const revealChrome = useAutoHideChrome();
   // Theme + font settings applied to the reflowable rendition (real theming).
   // Declared BEFORE the precompute effect so its effect runs first — the page
   // walk must measure with the active font, not the default.
@@ -572,6 +577,96 @@ export function EpubReader({ file }: { file: File }) {
     return () => rendition.off("keydown", onKey);
   }, [rendition, onPrev, onNext]);
 
+  // The iframe event forwarder for auto-hide: key/click activity INSIDE the
+  // book never bubbles to the window, so relay the events epub.js re-emits
+  // into `reveal`. Clicks only reveal on FINE pointers — on touch screens a
+  // tap is a command (tap zones below), not generic activity.
+  useEffect(() => {
+    if (!rendition) return;
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    rendition.on("keydown", revealChrome);
+    if (!coarse) rendition.on("click", revealChrome);
+    return () => {
+      rendition.off("keydown", revealChrome);
+      if (!coarse) rendition.off("click", revealChrome);
+    };
+  }, [rendition, revealChrome]);
+
+  // Touch tap zones (option A of the mobile page-turn decision): tap the
+  // left/right ~30% of the page to flip, the center to toggle the chrome —
+  // the Kindle/Kobo grammar, and the WCAG 2.5.1 single-pointer alternative to
+  // the swipe. Uses epub.js's relayed `click` (taps land inside the section
+  // iframe) — no overlay elements, so text selection is untouched. Link taps
+  // and taps that end a selection are left alone. In scroll mode there are no
+  // discrete pages: any tap just toggles the chrome.
+  const toggleChrome = useChromeToggle();
+  useEffect(() => {
+    if (!rendition) return;
+    if (!window.matchMedia("(pointer: coarse)").matches) return;
+    const onTap = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("a")) return; // footnotes/links keep their meaning
+      const view = e.view as (Window & { frameElement: Element | null }) | null;
+      if (view?.getSelection?.()?.toString()) return; // selecting, not paging
+      if (pageMode === "scroll") {
+        toggleChrome();
+        return;
+      }
+      // `clientX` is in the section IFRAME's coordinate space, which in paged
+      // mode spans every laid-out column (thousands of px) — useless directly.
+      // The iframe's bounding rect is in top-viewport space (its `left` goes
+      // negative as the container scrolls through columns), so rect.left +
+      // clientX = the tap's real x in the app viewport.
+      const frameRect = view?.frameElement?.getBoundingClientRect();
+      const width = window.innerWidth;
+      const zone =
+        frameRect && width > 0
+          ? resolveTapZone((frameRect.left + e.clientX) / width)
+          : "toggle";
+      if (zone === "prev") onPrev();
+      else if (zone === "next") onNext();
+      else toggleChrome();
+    };
+    rendition.on("click", onTap);
+    return () => rendition.off("click", onTap);
+  }, [rendition, pageMode, onPrev, onNext, toggleChrome]);
+
+  // Swipe to turn (paged mode). Touches land inside the section iframe, so
+  // listen on epub.js's relayed touchstart/touchend rather than our own DOM;
+  // `resolveSwipe` filters out scrolls, slow drags, and diagonal noise. Scroll
+  // mode swipes vertically by definition — no horizontal paging there.
+  useEffect(() => {
+    if (!rendition || pageMode === "scroll") return;
+    let startX = 0;
+    let startY = 0;
+    let startedAt = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      if (!t) return;
+      startX = t.screenX;
+      startY = t.screenY;
+      startedAt = performance.now();
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      if (!t || !startedAt) return;
+      const action = resolveSwipe(
+        t.screenX - startX,
+        t.screenY - startY,
+        performance.now() - startedAt,
+      );
+      startedAt = 0;
+      if (action === "next") onNext();
+      else if (action === "prev") onPrev();
+    };
+    rendition.on("touchstart", onTouchStart);
+    rendition.on("touchend", onTouchEnd);
+    return () => {
+      rendition.off("touchstart", onTouchStart);
+      rendition.off("touchend", onTouchEnd);
+    };
+  }, [rendition, pageMode, onPrev, onNext]);
+
   // Search provider bound to the loaded book; recreated when the book changes.
   const searchProvider = useMemo(() => {
     if (!rendition) return null;
@@ -861,7 +956,9 @@ export function EpubReader({ file }: { file: File }) {
               the reading area, not the toolbar. Paged mode only: the discrete
               left/right flip bars are a paginated affordance with no meaning in
               continuous scroll (and would hijack clicks along the margins). */}
-          {!isScroll && <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext />}
+          {!isScroll && (
+            <PageNav onPrev={onPrev} onNext={onNext} canPrev canNext chromeVisible={chromeVisible} />
+          )}
         </div>
 
         <ProgressRail
@@ -893,23 +990,30 @@ export function EpubReader({ file }: { file: File }) {
         )} */}
 
         <ReaderToolbar
+          visible={chromeVisible}
           // The "Download as PDF" export is hidden for now — reading is the
           // whole product. The conversion code (convertMutation, onDownloadPdf,
           // DownloadIcon) is kept so the button can be restored in one edit.
-          leftControls={<HomeButton />}
-          // The `formatControls` slot IS the format-adaptive seam — EPUB fills it
-          // with TOC + search + the font/theme settings trigger (PDF fills it with
-          // zoom/invert). Same shell, different slot contents.
-          formatControls={
-            // Append the reading-mode toggle alongside EpubControls in the middle
-            // cluster (mirrors the PDF reader) rather than editing the shared
-            // EpubControls component.
+          //
+          // Groups (track C): LEFT = navigation (home, contents, search),
+          // CENTER = view (typography/theme, reading mode), RIGHT = position.
+          leftControls={
             <>
-              <EpubControls
+              <HomeButton />
+              <EpubNavControls
                 hasToc={hasToc}
                 onOpenToc={toggleTocSidebar}
                 tocActive={tocSidebarOpen}
                 onOpenSearch={() => setSearchOpen(true)}
+              />
+            </>
+          }
+          // The `formatControls` slot IS the format-adaptive seam — EPUB fills it
+          // with the font/theme settings trigger (PDF fills it with zoom/invert).
+          // Same shell, different slot contents.
+          formatControls={
+            <>
+              <EpubViewControls
                 settingsTrigger={
                   <SettingsPopover
                     title="Reader settings"

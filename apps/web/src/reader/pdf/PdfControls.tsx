@@ -3,45 +3,33 @@ import type { ReactNode } from "react";
 import { ToolbarButton } from "../chrome";
 
 /**
- * PDF-specific toolbar controls (brief 06). These fill the `formatControls`
- * slot of the shared `ReaderToolbar` — the SAME format-adaptive seam the EPUB
- * reader uses (it swaps in TOC + search + font settings; PDF swaps in
- * zoom/invert + the theme settings trigger below).
+ * PDF-specific toolbar controls (brief 06), split into the toolbar's two
+ * semantic groups (2026-07-16 UI review, track C — the bar reads as
+ * *navigation | view | position* instead of Home alone in a corner):
  *
- * Controls (wiki/reader.md PDF row): zoom out / fit-width / zoom in, plus an
- * "invert colors" dark toggle (the only viable dark mode for a fixed-layout
- * PDF, since real theming can't recolor the rendered canvas). The settings
- * popover trigger (theme picker) is passed in as `settingsTrigger` so it sits
- * inline with the other buttons, mirroring `EpubControls`.
+ * - `PdfNavControls` → the LEFT cluster, beside Home: outline + search
+ *   (moving around the document).
+ * - `PdfViewControls` → the CENTER format-adaptive slot: zoom out / fit-width /
+ *   zoom in, the "invert colors" dark toggle (the only viable dark mode for a
+ *   fixed-layout PDF), and the settings trigger. EPUB fills the same slot with
+ *   its font/theme trigger (`EpubViewControls`) — the shell is untouched.
+ *
+ * The numeric zoom readout and fit-width hide on narrow bars so the pill never
+ * overflows a phone viewport; zoom in/out and invert stay.
  */
-export function PdfControls({
-  zoom,
-  onZoomIn,
-  onZoomOut,
-  onFitWidth,
-  inverted,
-  onToggleInvert,
+export function PdfNavControls({
   hasToc,
   onOpenToc,
   onOpenSearch,
-  settingsTrigger,
 }: {
-  zoom: number;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onFitWidth: () => void;
-  inverted: boolean;
-  onToggleInvert: () => void;
   /** Only render the TOC button when the PDF has an outline (open-question resolution). */
   hasToc: boolean;
   onOpenToc: () => void;
   /** Open the shared in-book search panel (brief 07, additive). */
   onOpenSearch: () => void;
-  /** The settings popover trigger (theme picker + the fixed-layout note). */
-  settingsTrigger?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <>
       {hasToc && (
         <ToolbarButton label="Table of contents" onClick={onOpenToc}>
           <TocIcon />
@@ -50,19 +38,44 @@ export function PdfControls({
       <ToolbarButton label="Search in book" onClick={onOpenSearch}>
         <SearchIcon />
       </ToolbarButton>
+    </>
+  );
+}
 
+export function PdfViewControls({
+  zoom,
+  onZoomIn,
+  onZoomOut,
+  onFitWidth,
+  inverted,
+  onToggleInvert,
+  settingsTrigger,
+}: {
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFitWidth: () => void;
+  inverted: boolean;
+  onToggleInvert: () => void;
+  /** The settings popover trigger (theme picker + the fixed-layout note). */
+  settingsTrigger?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-1">
       <ToolbarButton label="Zoom out" onClick={onZoomOut} disabled={zoom <= 0.5}>
         <MinusIcon />
       </ToolbarButton>
-      <span className="min-w-12 text-center text-xs tabular-nums text-reader-fg/70">
+      <span className="hidden min-w-12 text-center text-xs tabular-nums text-reader-fg/70 sm:inline">
         {Math.round(zoom * 100)}%
       </span>
       <ToolbarButton label="Zoom in" onClick={onZoomIn} disabled={zoom >= 3}>
         <PlusIcon />
       </ToolbarButton>
-      <ToolbarButton label="Fit width" onClick={onFitWidth}>
-        <FitWidthIcon />
-      </ToolbarButton>
+      <span className="hidden sm:block">
+        <ToolbarButton label="Fit width" onClick={onFitWidth}>
+          <FitWidthIcon />
+        </ToolbarButton>
+      </span>
       <ToolbarButton
         label="Invert colors (dark)"
         onClick={onToggleInvert}

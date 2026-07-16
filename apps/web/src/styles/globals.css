@@ -135,12 +135,100 @@
   --radius-cover: 2px;
 }
 
+/* Native form chrome (select popups, scrollbars) follows the active theme —
+   without this the UA paints light dropdown lists inside the dark/sepia app. */
+:root,
+[data-theme="light"],
+[data-theme="sepia"] {
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background-color: var(--reader-bg);
   color: var(--reader-fg);
   /* UI defaults to Inter; the reading pane opts into Source Serif 4. */
   font-family: var(--font-ui);
+}
+
+/* A rightward touch swipe with nothing to scroll horizontally is Chrome's
+   back-navigation gesture — which yanked readers out of the book when they
+   swiped back a page. Nothing in the app scrolls horizontally at the document
+   level, so suppress horizontal overscroll navigation app-wide (vertical
+   pull-to-refresh etc. is left alone). */
+html,
+body {
+  overscroll-behavior-x: none;
+}
+
+/* Paged-mode PDF page turns (reader/pdf/PdfReader.tsx): the incoming page
+   slides in a touch from the direction of travel. Deliberately small and fast
+   — feedback, not theater. (EPUB turns stay instant: animating transform/
+   opacity on an ancestor of the epub iframe promotes it to a compositor layer
+   that can cache stale pixels — see EpubReader's jump-veil comment.) */
+@keyframes page-slide-fwd {
+  from {
+    opacity: 0.25;
+    transform: translateX(18px);
+  }
+}
+@keyframes page-slide-back {
+  from {
+    opacity: 0.25;
+    transform: translateX(-18px);
+  }
+}
+
+/*
+ * QuietSelect's OPEN list (components/QuietSelect.tsx). The closed control is
+ * styled in the component; the popup itself is UA chrome that `color-scheme`
+ * can only flip light/dark — in sepia it stays a stark white list with the
+ * UA's blue selection. Where `appearance: base-select` is supported (Chromium
+ * 135+) we opt in and draw the picker on Quiet Paper tokens: raised sheet,
+ * hairline border, 4px radius, paper-container hover/checked fills, accent
+ * checkmark. Elsewhere this block is inert and the native popup remains.
+ */
+@supports (appearance: base-select) {
+  select.quiet-select,
+  select.quiet-select::picker(select) {
+    appearance: base-select;
+  }
+  /* base-select draws its own ▼ inside the button — hide it; the component
+     already renders the Quiet Paper chevron (double arrows otherwise). */
+  select.quiet-select::picker-icon {
+    display: none;
+  }
+  select.quiet-select::picker(select) {
+    background: var(--paper-raised);
+    color: var(--ink);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(28, 27, 27, 0.08);
+    padding: 4px;
+    margin-top: 4px;
+  }
+  select.quiet-select option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 2px;
+    font-family: var(--font-ui);
+    font-size: 0.875rem;
+  }
+  select.quiet-select option:hover,
+  select.quiet-select option:focus-visible {
+    background: var(--paper-low);
+  }
+  select.quiet-select option:checked {
+    background: var(--paper-container-high);
+  }
+  select.quiet-select option::checkmark {
+    color: var(--accent);
+  }
 }
 
 /* EPUB continuous-scroll mode (manager: "continuous", flow: "scrolled").

@@ -113,11 +113,18 @@ export function CoverCard({
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-display text-base leading-snug font-semibold text-ink">
+          {/* Two-line clamp, not a single-line ellipsis — a book app that cuts
+              titles to "The Apot…" undermines its one job. */}
+          <p
+            title={book.title}
+            className="line-clamp-2 font-display text-base leading-snug font-semibold text-ink"
+          >
             {book.title}
           </p>
           {book.author && (
-            <p className="truncate text-sm text-ink-variant">{book.author}</p>
+            <p title={book.author} className="truncate text-sm text-ink-variant">
+              {book.author}
+            </p>
           )}
         </div>
 

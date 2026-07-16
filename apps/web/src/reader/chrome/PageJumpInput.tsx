@@ -66,7 +66,10 @@ export function PageJumpInput({
     <div className="flex shrink-0 items-center gap-2 text-sm text-reader-fg/80" aria-live="off">
       {canJump ? (
         <span className="flex items-center gap-1.5 whitespace-nowrap tabular-nums">
-          <span className="text-reader-fg/60">{unitLabel}</span>
+          {/* The unit label, Go button, and % chip drop away on narrow bars so
+              the position cluster ("3 / 1020") never clips or overflows the
+              pill — blur (or the mobile keyboard's Done/Go) still commits. */}
+          <span className="hidden text-reader-fg/60 sm:inline">{unitLabel}</span>
           <input
             ref={inputRef}
             type="text"
@@ -101,7 +104,7 @@ export function PageJumpInput({
             }}
             aria-label={`Go to ${unitLabel.toLowerCase()}`}
             title="Go"
-            className="rounded-md bg-reader-accent/15 px-2 py-0.5 text-xs font-semibold text-reader-accent transition hover:bg-reader-accent/25 focus-visible:outline-2 focus-visible:outline-reader-accent"
+            className="hidden rounded-md bg-reader-accent/15 px-2 py-0.5 text-xs font-semibold text-reader-accent transition hover:bg-reader-accent/25 focus-visible:outline-2 focus-visible:outline-reader-accent sm:inline"
           >
             Go
           </button>
@@ -110,7 +113,7 @@ export function PageJumpInput({
         <span className="whitespace-nowrap tabular-nums text-reader-fg/40">{unitLabel} …</span>
       )}
       {percent !== null && (
-        <span className="rounded bg-reader-surface px-1.5 py-0.5 text-xs tabular-nums text-reader-fg/70">
+        <span className="hidden rounded bg-reader-surface px-1.5 py-0.5 text-xs tabular-nums text-reader-fg/70 md:inline">
           {percent}%
         </span>
       )}

@@ -43,7 +43,10 @@ export function StackIndex({
           </div>
 
           <div className="min-w-0">
-            <p className="truncate font-display text-base leading-snug font-semibold text-ink">
+            <p
+              title={group.label}
+              className="line-clamp-2 font-display text-base leading-snug font-semibold text-ink"
+            >
               {group.label}
             </p>
             <p className="font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">

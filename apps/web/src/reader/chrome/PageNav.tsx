@@ -1,52 +1,62 @@
 /**
- * Shared on-screen page navigation (wiki/reader.md "Page nav"). Renders two
- * VISIBLE full-height edge bars over the left/right margins of the reading pane
- * (the positioned reader root). Each bar is faintly tinted with a hairline inner
- * border so the reader can see where the flip zone begins and the page ends, and
- * carries a centered chevron marking its action. Clicking a bar flips the page;
- * clicking the page BODY does nothing — the bars are the only pointer affordance
- * (keyboard arrows still flip, handled separately by `usePageNavKeys`).
+ * Shared on-screen page navigation (wiki/reader.md "Page nav"). Two circular
+ * flip buttons floating over the reading pane's side margins, vertically
+ * centered (2026-07-16 UI review follow-up — the old full-height edge bars sat
+ * flush against the physical screen edge, where phones with rounded corners
+ * and system back-swipe gestures made them genuinely hard to press).
+ *
+ * The circles are translucent (soft reader-surface fill + backdrop blur) so
+ * page text stays readable underneath when the column is narrow, and they're
+ * inset from the edge by at least the device's safe area
+ * (`env(safe-area-inset-*)`). Touch users can also just swipe — the readers
+ * wire horizontal swipes to the same `onPrev`/`onNext` — so the buttons are
+ * one of two affordances, not the only one.
  *
  * Only mounted in paged mode (the reader gates on `!isScroll`) — in continuous
  * scroll there are no discrete pages to flip. Format-agnostic: `onPrev`/`onNext`
- * mean the next reading unit — a page for PDF, a location for EPUB.
+ * mean the next reading unit — a page for PDF, a location for EPUB. Kept out
+ * of the tab order (keyboard users page with the arrow keys); when a flip
+ * isn't possible the button fades out rather than sitting there dead.
  */
 export function PageNav({
   onPrev,
   onNext,
   canPrev,
   canNext,
+  chromeVisible = true,
 }: {
   onPrev: () => void;
   onNext: () => void;
   canPrev: boolean;
   canNext: boolean;
+  /**
+   * On TOUCH screens the circles are part of the chrome ("tool mode" in the
+   * tap-zone grammar): hidden while reading — tap zones + swipe page instead —
+   * and shown alongside the toolbar. Fine-pointer devices ignore this and keep
+   * the circles persistent (the margins are empty there anyway).
+   */
+  chromeVisible?: boolean;
 }) {
   return (
     <>
-      <EdgeBar side="left" label="Previous page" onClick={onPrev} disabled={!canPrev} />
-      <EdgeBar side="right" label="Next page" onClick={onNext} disabled={!canNext} />
+      <FlipButton side="left" label="Previous page" onClick={onPrev} disabled={!canPrev} chromeVisible={chromeVisible} />
+      <FlipButton side="right" label="Next page" onClick={onNext} disabled={!canNext} chromeVisible={chromeVisible} />
     </>
   );
 }
 
-/**
- * A single full-height page-flip bar pinned to one edge of the reading pane.
- * "Slightly visible": a faint fill + a hairline inner border delineate it from
- * the page; hover deepens both. `tabIndex={-1}` keeps it out of the tab order
- * (keyboard users page with the arrow keys); when the flip isn't possible the
- * bar fades out and stops taking clicks rather than sitting there dead.
- */
-function EdgeBar({
+function FlipButton({
   side,
   label,
   onClick,
   disabled,
+  chromeVisible,
 }: {
   side: "left" | "right";
   label: string;
   onClick: () => void;
   disabled: boolean;
+  chromeVisible: boolean;
 }) {
   const isLeft = side === "left";
   return (
@@ -56,11 +66,11 @@ function EdgeBar({
       onClick={onClick}
       disabled={disabled}
       tabIndex={-1}
-      className={`absolute inset-y-0 z-10 grid w-9 place-items-center bg-reader-fg/[0.03] text-reader-fg/40 outline-none transition hover:bg-reader-fg/[0.07] hover:text-reader-fg/80 focus:outline-none focus-visible:outline-none disabled:pointer-events-none disabled:opacity-0 sm:w-12 ${
+      className={`absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-reader-border/60 bg-reader-surface/70 text-reader-fg/70 shadow-sm backdrop-blur-sm transition outline-none hover:bg-reader-surface/90 hover:text-reader-fg focus:outline-none focus-visible:outline-none active:scale-95 disabled:pointer-events-none disabled:opacity-0 motion-reduce:transition-none ${
         isLeft
-          ? "left-0 cursor-w-resize border-r border-reader-border/60"
-          : "right-0 cursor-e-resize border-l border-reader-border/60"
-      }`}
+          ? "left-[max(0.5rem,env(safe-area-inset-left))] sm:left-[max(1rem,env(safe-area-inset-left))]"
+          : "right-[max(0.5rem,env(safe-area-inset-right))] sm:right-[max(1rem,env(safe-area-inset-right))]"
+      } ${chromeVisible ? "" : "pointer-coarse:pointer-events-none pointer-coarse:opacity-0"}`}
     >
       <Chevron dir={side} />
     </button>

@@ -20,6 +20,8 @@ import {
   ProgressRail,
   ReaderHeader,
   ReaderToolbar,
+  resolveSwipe,
+  resolveTapZone,
   SearchPanel,
   SettingsPopover,
   ThemePicker,
@@ -30,9 +32,10 @@ import {
   type TocEntry,
   useApplyTheme,
   useAutoHideChrome,
+  useChromeToggle,
   usePageNavKeys,
 } from "../chrome";
-import { PdfControls } from "./PdfControls";
+import { PdfNavControls, PdfViewControls } from "./PdfControls";
 import { usePdfOutline } from "./use-pdf-outline";
 import { createPdfSearchProvider } from "./pdf-search";
 
@@ -230,20 +233,76 @@ export function PdfReader({ file }: { file: File }) {
     }, 400);
   }, []);
 
+  // Which way the last page change moved, for the paged-mode slide-in
+  // animation (forward = new page slides in from the right). A ref, not
+  // state: it's read during the re-render `setCurrentLocation` triggers.
+  const navDirRef = useRef<"fwd" | "back">("fwd");
+
   const goToPage = useCallback(
     (page: number) => {
       if (numPages === null) return;
       const clamped = Math.min(Math.max(page, 1), numPages);
+      navDirRef.current = clamped >= currentPage ? "fwd" : "back";
       setCurrentLocation(clamped);
       // In scroll mode a page change is a scroll (the observer will re-confirm
       // the landed page); in paged mode it just swaps the single rendered page.
       if (isScroll) requestAnimationFrame(() => scrollToPage(clamped));
     },
-    [numPages, setCurrentLocation, isScroll, scrollToPage],
+    [numPages, setCurrentLocation, isScroll, scrollToPage, currentPage],
   );
 
   const onPrev = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
   const onNext = useCallback(() => goToPage(currentPage + 1), [currentPage, goToPage]);
+
+  // Swipe to turn (paged mode). The PDF page is ordinary DOM, so plain touch
+  // handlers on the content row suffice; `resolveSwipe` filters scroll/drag
+  // noise. Suppressed while the page is zoomed past the column width — a
+  // horizontal pan must stay a pan, not a page turn.
+  const swipeStartRef = useRef<{ x: number; y: number; at: number } | null>(null);
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    const t = e.changedTouches[0];
+    if (t) swipeStartRef.current = { x: t.screenX, y: t.screenY, at: performance.now() };
+  }, []);
+  const onTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start || isScroll) return;
+      const container = containerRef.current;
+      if (container && container.scrollWidth > container.clientWidth + 1) return; // zoomed: pan, don't page
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const action = resolveSwipe(t.screenX - start.x, t.screenY - start.y, performance.now() - start.at);
+      if (action === "next") onNext();
+      else if (action === "prev") onPrev();
+    },
+    [isScroll, onNext, onPrev],
+  );
+
+  // Touch tap zones (option A, mirrors the EPUB reader): left/right ~30% of
+  // the content row flips, the center toggles the chrome. Guards keep links
+  // (annotation layer), the flip circles themselves, and text selection
+  // working; scroll mode has no discrete pages so any tap just toggles.
+  const toggleChrome = useChromeToggle();
+  const onContentClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!window.matchMedia("(pointer: coarse)").matches) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("a, button, input")) return;
+      if (window.getSelection()?.toString()) return;
+      if (isScroll) {
+        toggleChrome();
+        return;
+      }
+      const rect = e.currentTarget.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const zone = resolveTapZone((e.clientX - rect.left) / rect.width);
+      if (zone === "prev") onPrev();
+      else if (zone === "next") onNext();
+      else toggleChrome();
+    },
+    [isScroll, onPrev, onNext, toggleChrome],
+  );
 
   // Scrub-rail seek: 0–100 → 1-based page, matching the rail tooltip's own
   // pct→page mapping so the release lands on the page it previewed.
@@ -438,8 +497,15 @@ export function PdfReader({ file }: { file: File }) {
         <ReaderHeader title={bookTitle} detail={currentChapter} visible={chromeVisible} />
 
         {/* Row 2: content. min-h-0 + min-w-0 let the 1fr row shrink so a zoomed
-            page pans inside the frame instead of blowing the grid out. */}
-        <div className="relative min-h-0 min-w-0 overflow-hidden">
+            page pans inside the frame instead of blowing the grid out. Touch
+            handlers here make a horizontal swipe anywhere over the page turn
+            it (paged mode; see onTouchEnd's zoom/pan guard). */}
+        <div
+          className="relative min-h-0 min-w-0 overflow-hidden"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          onClick={onContentClick}
+        >
           {/* One centered, measure-capped column — identical framing to EPUB
               (max-w-4xl, px-2 py-5). The scroll container lives INSIDE the cap so
               zoom/overflow pans within the column rather than widening the pane.
@@ -503,7 +569,17 @@ export function PdfReader({ file }: { file: File }) {
                     })}
                   </div>
                 ) : (
-                  <div className="flex min-h-full justify-center">
+                  // Keyed by page so each turn remounts the wrapper and replays
+                  // a short slide-in from the direction of travel (see
+                  // globals.css keyframes; motion-safe only).
+                  <div
+                    key={currentPage}
+                    className={`flex min-h-full justify-center ${
+                      navDirRef.current === "fwd"
+                        ? "motion-safe:animate-[page-slide-fwd_0.18s_ease-out]"
+                        : "motion-safe:animate-[page-slide-back_0.18s_ease-out]"
+                    }`}
+                  >
                     <Page
                       pageNumber={currentPage}
                       width={pageWidth}
@@ -528,6 +604,7 @@ export function PdfReader({ file }: { file: File }) {
               onNext={onNext}
               canPrev={currentPage > 1}
               canNext={numPages !== null && currentPage < numPages}
+              chromeVisible={chromeVisible}
             />
           )}
         </div>
@@ -559,23 +636,32 @@ export function PdfReader({ file }: { file: File }) {
         )}
 
         <ReaderToolbar
-          leftControls={<HomeButton />}
+          visible={chromeVisible}
+          // Groups (track C): LEFT = navigation (home, outline, search),
+          // CENTER = view (zoom/invert/settings, reading mode), RIGHT = position.
+          leftControls={
+            <>
+              <HomeButton />
+              <PdfNavControls
+                hasToc={hasToc}
+                onOpenToc={() => setTocOpen(true)}
+                onOpenSearch={() => setSearchOpen(true)}
+              />
+            </>
+          }
           // The `formatControls` slot IS the format-adaptive seam — PDF fills it
           // here; brief 07 fills it with EPUB font/theme controls (same shell).
           formatControls={
-            // Append the reading-mode toggle alongside PdfControls in the middle
+            // Append the reading-mode toggle alongside PdfViewControls in the middle
             // cluster (mirrors the EPUB reader) without editing shared PdfControls.
             <>
-              <PdfControls
+              <PdfViewControls
                 zoom={zoom}
                 onZoomIn={onZoomIn}
                 onZoomOut={onZoomOut}
                 onFitWidth={onFitWidth}
                 inverted={inverted}
                 onToggleInvert={onToggleInvert}
-                hasToc={hasToc}
-                onOpenToc={() => setTocOpen(true)}
-                onOpenSearch={() => setSearchOpen(true)}
                 settingsTrigger={
                   <SettingsPopover
                     title="Reader settings"

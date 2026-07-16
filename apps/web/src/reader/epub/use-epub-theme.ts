@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Rendition } from "epubjs";
 
 import { useReaderStore, type Theme } from "../../store/reader-store";
@@ -16,8 +16,11 @@ import { fontStackFor } from "./EpubSettings";
  */
 
 // Text/background palette per theme (mirrors globals.css `--reader-*` tokens).
+// Light = Quiet Paper's retuned values (design.md "Colors" merge change: bg
+// #ffffff→#fcf9f8, link #2563eb→#30568b) so the rendered page matches the
+// chrome around it instead of floating a whiter rectangle on the paper shell.
 const THEME_COLORS: Record<Theme, { bg: string; fg: string; link: string }> = {
-  light: { bg: "#ffffff", fg: "#1a1a1a", link: "#2563eb" },
+  light: { bg: "#fcf9f8", fg: "#1c1b1b", link: "#30568b" },
   sepia: { bg: "#f4ecd8", fg: "#3b2f1e", link: "#92400e" },
   dark: { bg: "#181818", fg: "#e8e8e8", link: "#60a5fa" },
 };
@@ -29,6 +32,10 @@ export function themeRules(
   // Scroll mode (`flow: scrolled-doc`) changes how `vh` behaves for images —
   // see the `img` rule below. Defaults to paged.
   isScroll = false,
+  // Narrow viewports (phones): publisher `text-align: justify` opens rivers of
+  // whitespace on short lines even with hyphenation enabled — see the
+  // left-align override below. Defaults to wide.
+  isNarrow = false,
 ) {
   const c = THEME_COLORS[theme];
   return {
@@ -64,6 +71,17 @@ export function themeRules(
     "p, div, span, h1, h2, h3, h4, h5, h6, li, blockquote, td, th": {
       color: `${c.fg} !important`,
     },
+    // Narrow columns can't absorb publisher justification — with few words per
+    // line, `text-align: justify` stretches word gaps into rivers (the classic
+    // justification-without-enough-measure failure). Ragged-right is the
+    // accessible default at this width; wide viewports keep publisher styling.
+    ...(isNarrow
+      ? {
+          "p, li, blockquote, dd": {
+            "text-align": "left !important",
+          },
+        }
+      : {}),
     a: { color: `${c.link} !important` },
     // Covers and full-page illustrations: fit the viewport column and sit
     // centered instead of rendering at natural size in the top-left.
@@ -91,6 +109,9 @@ export function themeRules(
   };
 }
 
+/** Below this viewport width, publisher-justified text left-aligns (rivers). */
+const NARROW_QUERY = "(max-width: 520px)";
+
 export function useEpubTheme(rendition: Rendition | null) {
   const theme = useReaderStore((s) => s.theme);
   const fontSettings = useReaderStore((s) => s.fontSettings);
@@ -98,6 +119,17 @@ export function useEpubTheme(rendition: Rendition | null) {
   // flip remounts the rendition anyway, but subscribe + depend on it so the
   // re-registered theme carries the right rule for the new mode.
   const isScroll = useReaderStore((s) => s.pageMode === "scroll");
+  // Narrow-viewport flag for the left-align override; live-updates on resize/
+  // rotation so the re-registered theme follows the device.
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(NARROW_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   // Tracks which rendition has had its initial settings applied, so the
   // re-render nudge below only runs for *changes*, not the first application.
   const appliedRef = useRef<Rendition | null>(null);
@@ -105,12 +137,14 @@ export function useEpubTheme(rendition: Rendition | null) {
   useEffect(() => {
     if (!rendition) return;
 
-    const themeName = `reader-${theme}`;
+    const themeName = `reader-${theme}${isNarrow ? "-narrow" : ""}`;
     // Register (idempotent) + select the themed rule set. `register` with a
-    // rules object injects the CSS into every rendered section iframe.
+    // rules object injects the CSS into every rendered section iframe. The
+    // narrow variant gets its own name — re-registering the SAME name with
+    // different rules doesn't reliably restyle already-rendered sections.
     rendition.themes.register(
       themeName,
-      themeRules(theme, fontSettings.lineSpacing, fontSettings.margins, isScroll),
+      themeRules(theme, fontSettings.lineSpacing, fontSettings.margins, isScroll, isNarrow),
     );
     rendition.themes.select(themeName);
 
@@ -148,6 +182,7 @@ export function useEpubTheme(rendition: Rendition | null) {
     rendition,
     theme,
     isScroll,
+    isNarrow,
     fontSettings.size,
     fontSettings.family,
     fontSettings.lineSpacing,

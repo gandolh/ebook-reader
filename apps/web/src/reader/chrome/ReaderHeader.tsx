@@ -23,7 +23,7 @@ export function ReaderHeader({
   return (
     <div
       aria-hidden="true"
-      className={`pointer-events-none flex items-baseline justify-between gap-6 px-6 py-2.5 text-xs text-reader-fg/50 transition-opacity duration-300 ${
+      className={`pointer-events-none flex items-baseline justify-between gap-6 px-6 py-2.5 text-xs text-reader-fg/60 transition-opacity duration-300 motion-reduce:transition-none ${
         visible ? "opacity-100" : "opacity-0"
       }`}
     >

@@ -91,10 +91,20 @@ function LockScreen() {
             </p>
           )}
 
+          {/* Disabled ≠ translucent: 50%-opacity Ink reads as an unthemed UA-
+              gray button on the very first screen. Empty form → muted paper
+              fill; submitting → keep the Ink fill (it's progress, not a dead
+              control) with a quiet pulse. */}
           <button
             type="submit"
             disabled={!canSubmit}
-            className="mt-2 rounded bg-ink-fill px-6 py-2.5 font-ui text-sm font-semibold text-on-ink-fill transition hover:opacity-90 disabled:opacity-50"
+            className={`mt-2 rounded px-6 py-2.5 font-ui text-sm font-semibold transition ${
+              submitting
+                ? "bg-ink-fill text-on-ink-fill motion-safe:animate-pulse"
+                : canSubmit
+                  ? "bg-ink-fill text-on-ink-fill hover:opacity-90"
+                  : "bg-paper-container text-ink-variant"
+            }`}
           >
             {submitting ? "Signing in…" : "Sign in"}
           </button>

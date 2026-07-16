@@ -22,7 +22,7 @@ export function ShelfView({
   renderCover: (book: LibraryBook) => ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {groups.map((group) => (
         <Shelf key={group.key} group={group} renderCover={renderCover} />
       ))}
@@ -41,9 +41,13 @@ function Shelf({
 
   return (
     <section aria-label={group.label} className="flex flex-col gap-3">
-      <h3 className="flex items-baseline gap-2 font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
+      <h3 className="flex items-center gap-2 font-ui text-xs font-semibold tracking-[0.08em] text-ink-variant uppercase">
         {group.label}
-        <span className="text-ink-variant/70">{group.books.length}</span>
+        {/* Full-strength ink-variant on a chip — the old 70%-opacity count sat
+            below AA contrast at this size. */}
+        <span className="rounded bg-paper-container px-1.5 py-0.5 text-[11px] leading-none font-semibold text-ink-variant tabular-nums normal-case">
+          {group.books.length}
+        </span>
       </h3>
 
       <div className="relative">
