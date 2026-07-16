@@ -3,7 +3,7 @@ import { useRef, type KeyboardEvent, type ReactNode } from "react";
 
 import type { Theme } from "../store/reader-store";
 import { useReaderStore } from "../store/reader-store";
-import type { GroupView } from "../lib/library-prefs";
+import type { GroupView, LibraryTypeFilter } from "../lib/library-prefs";
 
 /**
  * The library header (wiki/design.md): wordmark in Playfair on the left, a
@@ -17,6 +17,10 @@ import type { GroupView } from "../lib/library-prefs";
  *
  * Brief 22 adds the quiet "Browse catalogs" link (→ `/discover`) at the start
  * of the right-side cluster, ahead of the view toggle and theme control.
+ *
+ * Brief 23c adds the media-type filter (All / Books / Music / Videos, see
+ * `TypeFilterControl` below) ahead of the view toggle — always visible while
+ * the library has any books, independent of grouping.
  */
 
 const THEMES: { value: Theme; label: string; glyph: ReactNode }[] = [
@@ -31,6 +35,9 @@ export function LibraryHeader({
   view,
   onViewChange,
   showViewToggle = false,
+  typeFilter,
+  onTypeFilterChange,
+  showTypeFilter = false,
 }: {
   /** `useOfflineDownload().storage` — the origin's platform-wide usage/quota. */
   storage?: { usage: number; quota: number } | null;
@@ -42,6 +49,12 @@ export function LibraryHeader({
   onViewChange?: (view: GroupView) => void;
   /** Whether to render the Shelves⇄Stacks toggle — only while Group by ≠ None. */
   showViewToggle?: boolean;
+  /** Current media-type filter (brief 23c). Ignored while `showTypeFilter` is false. */
+  typeFilter?: LibraryTypeFilter;
+  /** Set the media-type filter. */
+  onTypeFilterChange?: (filter: LibraryTypeFilter) => void;
+  /** Whether to render the All/Books/Music/Videos filter — hidden on an empty library. */
+  showTypeFilter?: boolean;
 }) {
   const theme = useReaderStore((s) => s.theme);
   const setTheme = useReaderStore((s) => s.setTheme);
@@ -65,6 +78,10 @@ export function LibraryHeader({
         >
           Browse catalogs
         </Link>
+
+        {showTypeFilter && typeFilter && onTypeFilterChange && (
+          <TypeFilterControl value={typeFilter} onChange={onTypeFilterChange} />
+        )}
 
         {showViewToggle && view && onViewChange && (
           <ViewToggle view={view} onViewChange={onViewChange} />
@@ -160,6 +177,73 @@ function ViewToggle({
             }`}
           >
             {v.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const TYPE_FILTERS: { value: LibraryTypeFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "book", label: "Books" },
+  { value: "audio", label: "Music" },
+  { value: "video", label: "Videos" },
+];
+
+/**
+ * The media-type filter (brief 23c step 6): a quiet four-segment control —
+ * All / Books / Music / Videos — narrowing the gallery to a single `kind`
+ * *before* grouping runs. Same visual family as `ViewToggle` on purpose (Inter
+ * `label-caps`, hairline border, `2px` radius segments, active fill
+ * `paper-container-high`, no accent besides the focus ring) so the two
+ * controls read as one system rather than two competing widgets.
+ */
+function TypeFilterControl({
+  value,
+  onChange,
+}: {
+  value: LibraryTypeFilter;
+  onChange: (filter: LibraryTypeFilter) => void;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
+    const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+    if (!forward && !back) return;
+    e.preventDefault();
+    const current = TYPE_FILTERS.findIndex((f) => f.value === value);
+    const next = (current + (forward ? 1 : TYPE_FILTERS.length - 1)) % TYPE_FILTERS.length;
+    onChange(TYPE_FILTERS[next].value);
+    refs.current[next]?.focus();
+  }
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Media type"
+      onKeyDown={onKeyDown}
+      className="flex items-center rounded border border-line-soft/70 p-0.5"
+    >
+      {TYPE_FILTERS.map((f, i) => {
+        const active = value === f.value;
+        return (
+          <button
+            key={f.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            onClick={() => onChange(f.value)}
+            className={`rounded-[2px] px-3 py-1 font-ui text-xs font-semibold tracking-[0.08em] uppercase transition focus-visible:outline-2 focus-visible:outline-accent ${
+              active ? "bg-paper-container-high text-ink" : "text-ink-variant hover:text-ink"
+            }`}
+          >
+            {f.label}
           </button>
         );
       })}

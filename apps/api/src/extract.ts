@@ -2,7 +2,8 @@ import { basename, posix } from "node:path";
 import AdmZip from "adm-zip";
 import sharp from "sharp";
 import { pdf } from "pdf-to-img";
-import type { FileType } from "@ebook-reader/shared";
+import { parseBuffer } from "music-metadata";
+import { kindForFormat, type FileType } from "@ebook-reader/shared";
 
 /**
  * Server-side metadata + cover extraction (decisions.md D26).
@@ -16,6 +17,10 @@ import type { FileType } from "@ebook-reader/shared";
  * - PDF: render page 1 to a raster via `pdf-to-img` (bundled pdfjs + canvas,
  *   no system deps), and read the doc's Info `Title` / `Author` /
  *   `Subject` + `Keywords` (subjects). No series metadata in a PDF Info dict.
+ * - Media (mp3/mp4/webm, brief 23): `music-metadata` `parseBuffer`. mp3 maps
+ *   ID3 tags onto the book columns (artist→author, album→series, track→series
+ *   index, genre→subjects) and normalizes embedded art to a SQUARE cover;
+ *   mp4/webm yield `format.duration` only (no frame extraction — grilled).
  *
  * Every path is best-effort: extraction never throws to the caller — a book
  * with no cover/metadata still gets stored (title falls back to the filename,
@@ -23,9 +28,11 @@ import type { FileType } from "@ebook-reader/shared";
  * a typographic fallback tile).
  */
 
-/** Cover thumbnail geometry — 2:3 portrait (design.md: book covers are 2:3). */
+/** Book cover geometry — 2:3 portrait (design.md: book covers are 2:3). */
 const COVER_WIDTH = 400;
 const COVER_HEIGHT = 600;
+/** Audio cover geometry — square (album art is 1:1, not a book spine). */
+const AUDIO_COVER_SIZE = 400;
 const COVER_QUALITY = 78;
 
 export interface ExtractedMeta {
@@ -39,18 +46,38 @@ export interface ExtractedMeta {
   subjects: string[];
   /** JPEG thumbnail bytes, or null if no cover could be produced. */
   cover: Buffer | null;
+  /** Playback length in seconds for audio/video, or null (books / unknown). */
+  durationSeconds: number | null;
 }
 
-/** Normalize any cover image buffer to a 2:3 JPEG thumbnail. */
-async function toThumbnail(image: Buffer): Promise<Buffer | null> {
+/** Normalize a cover image buffer to a JPEG thumbnail at the given geometry. */
+async function toJpegThumbnail(
+  image: Buffer,
+  width: number,
+  height: number,
+): Promise<Buffer | null> {
   try {
     return await sharp(image)
-      .resize(COVER_WIDTH, COVER_HEIGHT, { fit: "cover", position: "top" })
+      .resize(width, height, { fit: "cover", position: "top" })
       .jpeg({ quality: COVER_QUALITY })
       .toBuffer();
   } catch {
     return null; // corrupt/unsupported image → typographic fallback in UI
   }
+}
+
+/** Normalize a book cover to a 2:3 JPEG thumbnail. */
+function toThumbnail(image: Buffer): Promise<Buffer | null> {
+  return toJpegThumbnail(image, COVER_WIDTH, COVER_HEIGHT);
+}
+
+/** Normalize embedded album art to a centered square JPEG thumbnail. */
+function toSquareThumbnail(image: Buffer): Promise<Buffer | null> {
+  return sharp(image)
+    .resize(AUDIO_COVER_SIZE, AUDIO_COVER_SIZE, { fit: "cover", position: "centre" })
+    .jpeg({ quality: COVER_QUALITY })
+    .toBuffer()
+    .catch(() => null); // corrupt/unsupported art → typographic fallback in UI
 }
 
 /** Strip XML tags/entities from a captured text node. */
@@ -278,7 +305,7 @@ async function extractEpub(fileBytes: Buffer, fallbackTitle: string): Promise<Ex
     // fall through with whatever we have
   }
 
-  return { title, author, series, seriesIndex, subjects, cover };
+  return { title, author, series, seriesIndex, subjects, cover, durationSeconds: null };
 }
 
 // --- PDF ---------------------------------------------------------------------
@@ -323,19 +350,102 @@ async function extractPdf(fileBytes: Buffer, fallbackTitle: string): Promise<Ext
   }
 
   // A PDF Info dict has no series concept.
-  return { title, author, series: null, seriesIndex: null, subjects, cover };
+  return { title, author, series: null, seriesIndex: null, subjects, cover, durationSeconds: null };
+}
+
+// --- Media (mp3 / mp4 / webm) ------------------------------------------------
+
+/** Round a `format.duration` (seconds, fractional) to a finite number, or null. */
+function normalizeDuration(raw: number | undefined): number | null {
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null;
+}
+
+/**
+ * The MIME hint `music-metadata` needs to pick a parser. It must be the real
+ * media type (`audio/mpeg`, not `application/mp3`) — an unrecognized hint makes
+ * `parseBuffer` throw "Failed to determine audio format".
+ */
+const MEDIA_MIME: Partial<Record<FileType, string>> = {
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  webm: "video/webm",
+};
+
+/**
+ * Metadata for an audio/video file via `music-metadata` (pure JS, no binary).
+ *
+ * - mp3: ID3 `title`, `artist`→author, `album`→series, `track.no`→seriesIndex,
+ *   `genre`→subjects, and the first embedded picture normalized to a SQUARE
+ *   cover — so the artist/album grouping (grouping.ts) works on music unchanged.
+ * - mp4/webm: `format.duration` only; no cover (frame extraction would need the
+ *   ffmpeg binary — grilled out of scope).
+ *
+ * Best-effort: a parse failure returns the filename title with everything else
+ * null/empty, so a bad file never fails the upload.
+ */
+async function extractMedia(
+  fileBytes: Buffer,
+  format: FileType,
+  fallbackTitle: string,
+): Promise<ExtractedMeta> {
+  let title = fallbackTitle;
+  let author: string | null = null;
+  let series: string | null = null;
+  let seriesIndex: number | null = null;
+  let subjects: string[] = [];
+  let cover: Buffer | null = null;
+  let durationSeconds: number | null = null;
+
+  try {
+    const metadata = await parseBuffer(fileBytes, { mimeType: MEDIA_MIME[format] });
+    durationSeconds = normalizeDuration(metadata.format.duration);
+
+    // Only mp3 carries the ID3 tags + embedded art we map onto book columns;
+    // for video we keep title=filename and everything else null (cover included).
+    if (format === "mp3") {
+      const common = metadata.common;
+      const tagTitle = common.title?.trim();
+      if (tagTitle) title = tagTitle;
+      author = common.artist?.trim() || null;
+      series = common.album?.trim() || null;
+      seriesIndex =
+        typeof common.track?.no === "number" && Number.isFinite(common.track.no)
+          ? common.track.no
+          : null;
+      subjects = normalizeSubjects(common.genre ?? []);
+
+      const picture = common.picture?.[0];
+      if (picture) {
+        cover = await toSquareThumbnail(Buffer.from(picture.data));
+      }
+    }
+  } catch {
+    // Unparseable/corrupt media → keep the filename title, store with no cover.
+  }
+
+  return { title, author, series, seriesIndex, subjects, cover, durationSeconds };
 }
 
 // --- entry -------------------------------------------------------------------
 
-/** Extract title/author/series/subjects/cover for a stored book. Never throws. */
+/** Extract title/author/series/subjects/cover/duration for a stored file. Never throws. */
 export async function extractMeta(
   fileBytes: Buffer,
   format: FileType,
   originalName: string,
 ): Promise<ExtractedMeta> {
-  const fallbackTitle = basename(originalName).replace(/\.(epub|pdf)$/i, "").trim() || originalName;
-  return format === "epub"
-    ? extractEpub(fileBytes, fallbackTitle)
-    : extractPdf(fileBytes, fallbackTitle);
+  const fallbackTitle =
+    basename(originalName)
+      .replace(/\.(epub|pdf|mp3|mp4|webm)$/i, "")
+      .trim() || originalName;
+
+  switch (kindForFormat(format)) {
+    case "book":
+      return format === "epub"
+        ? extractEpub(fileBytes, fallbackTitle)
+        : extractPdf(fileBytes, fallbackTitle);
+    case "audio":
+    case "video":
+      return extractMedia(fileBytes, format, fallbackTitle);
+  }
 }

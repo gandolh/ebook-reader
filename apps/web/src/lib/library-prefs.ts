@@ -1,4 +1,4 @@
-import { LIBRARY_GROUPS, type LibraryGroup } from "@ebook-reader/shared";
+import { LIBRARY_GROUPS, MEDIA_KINDS, type LibraryGroup, type MediaKind } from "@ebook-reader/shared";
 
 /**
  * Durable library UI preferences (brief 21), persisted to localStorage exactly
@@ -15,6 +15,8 @@ import { LIBRARY_GROUPS, type LibraryGroup } from "@ebook-reader/shared";
 const GROUP_BY_KEY = "library:groupBy";
 /** Which view renders an active grouping. Default "shelves". */
 const GROUP_VIEW_KEY = "library:groupView";
+/** Which media kind narrows the gallery (brief 23c). Default "all" = every kind. */
+const TYPE_FILTER_KEY = "library:typeFilter";
 
 /** Shelves (horizontal shelves) vs Stacks (fanned index + drill-in). */
 export type GroupView = "shelves" | "stacks";
@@ -49,6 +51,34 @@ export function readGroupViewPref(): GroupView {
 export function writeGroupViewPref(view: GroupView): void {
   try {
     localStorage.setItem(GROUP_VIEW_KEY, view);
+  } catch {
+    /* preference persistence is best-effort */
+  }
+}
+
+/**
+ * The gallery's media-type filter (brief 23c step 6): "all" (every kind, the
+ * unfiltered default) or a single `MediaKind` narrowing the gallery to Books /
+ * Music / Videos. Applied in `home.tsx` **before** grouping, so grouping/
+ * shelves/stacks operate on the already-filtered set.
+ */
+export type LibraryTypeFilter = "all" | MediaKind;
+
+export function readTypeFilterPref(): LibraryTypeFilter {
+  try {
+    const value = localStorage.getItem(TYPE_FILTER_KEY);
+    if (value === "all") return "all";
+    return (MEDIA_KINDS as readonly string[]).includes(value ?? "")
+      ? (value as MediaKind)
+      : "all";
+  } catch {
+    return "all";
+  }
+}
+
+export function writeTypeFilterPref(filter: LibraryTypeFilter): void {
+  try {
+    localStorage.setItem(TYPE_FILTER_KEY, filter);
   } catch {
     /* preference persistence is best-effort */
   }

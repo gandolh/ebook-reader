@@ -13,6 +13,7 @@ import type {
 import {
   detectFileType,
   isFileSizeValid,
+  kindForFormat,
   librarySortSchema,
   updateProgressSchema,
   type FileType,
@@ -42,7 +43,48 @@ import { extractMeta } from "./extract.js";
 const CONTENT_TYPE: Record<FileType, string> = {
   pdf: "application/pdf",
   epub: "application/epub+zip",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  webm: "video/webm",
 };
+
+/** A resolved single byte-range, an unsatisfiable marker, or null (no/ignored range). */
+type RangeResult = { start: number; end: number } | "unsatisfiable" | null;
+
+/**
+ * Parse a single-range `Range: bytes=` header against a known total `size`.
+ *
+ * Supports `bytes=start-end`, `bytes=start-` (open-ended), and `bytes=-suffix`
+ * (last N bytes). Returns:
+ *  - `null` when there is no Range, or it's malformed / multi-range — the caller
+ *    then serves the full 200 (ignoring the header is valid per RFC 7233).
+ *  - `"unsatisfiable"` when the range lies entirely outside the file → 416.
+ *  - `{ start, end }` (inclusive, clamped to the file) for a 206.
+ */
+function parseRange(header: string | undefined, size: number): RangeResult {
+  if (!header) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return null; // multi-range or malformed → full 200
+  const startRaw = match[1];
+  const endRaw = match[2];
+  if (startRaw === "" && endRaw === "") return null; // "bytes=-" → full 200
+
+  let start: number;
+  let end: number;
+  if (startRaw === "") {
+    // Suffix form: the last `suffix` bytes.
+    const suffix = Number.parseInt(endRaw, 10);
+    if (suffix <= 0) return "unsatisfiable";
+    start = Math.max(size - suffix, 0);
+    end = size - 1;
+  } else {
+    start = Number.parseInt(startRaw, 10);
+    end = endRaw === "" ? size - 1 : Math.min(Number.parseInt(endRaw, 10), size - 1);
+  }
+
+  if (start > end || start >= size) return "unsatisfiable";
+  return { start, end };
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -65,8 +107,10 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     }
 
     const format = detectFileType(data.filename, data.mimetype);
-    if (format !== "pdf" && format !== "epub") {
-      return reply.status(400).send({ error: "Upload must be a PDF or EPUB file." });
+    if (format === null) {
+      return reply.status(400).send({
+        error: "Unsupported file type. Accepted formats: PDF, EPUB, MP3, MP4, WebM.",
+      });
     }
 
     const id = randomUUID();
@@ -105,6 +149,7 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
         seriesIndex: null,
         subjects: [],
         cover: null,
+        durationSeconds: null,
       };
     }
 
@@ -128,6 +173,10 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
       // Uploads are the default provenance (brief 22); imports set 'gutenberg'.
       source: "upload" as const,
       source_id: null,
+      // Media kind is derived from the format; duration comes from extraction
+      // (null for books and unknown-duration media) — brief 23.
+      kind: kindForFormat(format),
+      duration_seconds: meta.durationSeconds,
     };
     insertBook(row);
 
@@ -166,15 +215,53 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     // revalidate on every open, but a matching If-None-Match short-circuits to a
     // 304 (no multi-MB re-download of the book) while the touch above still
     // runs. Without this the reader re-streams the whole file on every refresh.
+    // `Accept-Ranges: bytes` is always advertised — media players (and Safari's
+    // `bytes=0-1` probe) require it to enable seek/scrub (brief 23).
     const etag = `"${id}"`;
-    reply.header("Cache-Control", "private, no-cache").header("ETag", etag);
+    reply
+      .header("Cache-Control", "private, no-cache")
+      .header("ETag", etag)
+      .header("Accept-Ranges", "bytes");
     if (request.headers["if-none-match"] === etag) {
       return reply.status(304).send();
     }
 
+    const contentType = CONTENT_TYPE[row.format];
+    const disposition = `inline; filename="${id}.${row.format}"`;
+
+    // Total size from disk — needed for Content-Range and to clamp the range.
+    // We never read the whole file into memory: `createReadStream({start,end})`
+    // streams only the requested window.
+    let size: number;
+    try {
+      ({ size } = await stat(row.file_path));
+    } catch {
+      return reply.status(404).send({ error: "Book file not found." });
+    }
+
+    const range = parseRange(request.headers.range, size);
+    if (range === "unsatisfiable") {
+      return reply
+        .status(416)
+        .header("Content-Range", `bytes */${size}`)
+        .send({ error: "Requested range not satisfiable." });
+    }
+
+    if (range) {
+      const { start, end } = range;
+      reply
+        .status(206)
+        .header("Content-Type", contentType)
+        .header("Content-Disposition", disposition)
+        .header("Content-Range", `bytes ${start}-${end}/${size}`)
+        .header("Content-Length", String(end - start + 1));
+      return reply.send(createReadStream(row.file_path, { start, end }));
+    }
+
     reply
-      .header("Content-Type", CONTENT_TYPE[row.format])
-      .header("Content-Disposition", `inline; filename="${id}.${row.format}"`);
+      .header("Content-Type", contentType)
+      .header("Content-Disposition", disposition)
+      .header("Content-Length", String(size));
     return reply.send(createReadStream(row.file_path));
   });
 

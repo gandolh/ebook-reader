@@ -25,6 +25,15 @@ export interface CoverOfflineProps {
  * Brief 20 adds the offline toggle top-left (`offline`, omitted entirely when
  * IndexedDB isn't supported) and gates the "Remove" library action behind
  * `deleteDisabled` while offline (removing is an API call, not a local op).
+ *
+ * Brief 23c renders per `book.kind` inside the same unchanged 2:3 footprint:
+ * `audio` centers the (optional) square embedded-art image on the paper tile;
+ * `video` always uses the typographic fallback tile (no frame extraction, D-
+ * per brief 23's grilled decision); both add a duration caption. The top-right
+ * badge shows MUSIC/VIDEO for media in place of the format (books keep
+ * EPUB/PDF). The offline toggle is book-only — media is excluded from offline
+ * v1 (brief 23's grilled decision), so it's simply not rendered for `kind !==
+ * "book"` regardless of whether the caller passed `offline`.
  */
 export function CoverCard({
   book,
@@ -41,8 +50,9 @@ export function CoverCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
-  const showImage = book.hasCover && !imgFailed;
+  const kind = book.kind ?? "book";
   const progressPct = Math.round(book.progress * 100);
+  const durationLabel = book.durationSeconds != null ? formatDuration(book.durationSeconds) : null;
 
   return (
     <div className="group flex flex-col gap-3">
@@ -57,21 +67,23 @@ export function CoverCard({
           aria-label={`Open ${book.title}`}
           className="absolute inset-0 overflow-hidden rounded-(--radius-cover) bg-paper-container text-left shadow-[0_8px_16px_-6px_rgba(28,27,27,0.18)] ring-1 ring-line-soft/40 transition duration-200 group-hover:shadow-[0_14px_24px_-8px_rgba(28,27,27,0.28)] focus-visible:outline-2 focus-visible:outline-accent"
         >
-          {showImage ? (
-            <img
-              src={coverUrl(book.id)}
-              alt=""
-              onError={() => setImgFailed(true)}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <CoverFallback title={book.title} />
-          )}
+          <CoverArt book={book} imgFailed={imgFailed} onImgError={() => setImgFailed(true)} />
 
-          {/* Format badge (design.md chips: label-caps, subtle scrim, no border). */}
+
+          {/* Kind/format badge (design.md chips: label-caps, subtle scrim, no
+              border) — MUSIC/VIDEO replaces the format for media. */}
           <span className="absolute top-2.5 right-2.5 rounded-(--radius-cover) bg-ink/55 px-2 py-1 text-[11px] leading-none font-semibold tracking-[0.08em] text-white uppercase backdrop-blur-sm">
-            {book.format}
+            {kind === "audio" ? "Music" : kind === "video" ? "Video" : book.format}
           </span>
+
+          {/* Duration caption (audio/video only) — the m:ss / h:mm:ss sibling
+              of a page count, bottom-left so it never collides with the
+              kind/format badge. */}
+          {durationLabel && (
+            <span className="absolute bottom-2.5 left-2.5 rounded-(--radius-cover) bg-ink/55 px-2 py-1 font-ui text-[11px] leading-none text-white backdrop-blur-sm">
+              {durationLabel}
+            </span>
+          )}
 
           {/* Reading progress: thin 2px blue bar at the bottom edge. */}
           {progressPct > 0 && (
@@ -84,7 +96,10 @@ export function CoverCard({
           )}
         </button>
 
-        {offline && (
+        {/* Offline downloads are books-only for v1 (brief 23's grilled
+            decision) — the toggle is simply omitted for media, regardless of
+            what the caller passed. */}
+        {offline && kind === "book" && (
           <OfflineToggle
             bookTitle={book.title}
             state={offline.state}
@@ -142,6 +157,72 @@ export function CoverCard({
       </div>
     </div>
   );
+}
+
+/**
+ * The per-kind cover-art fill for a 2:3 tile, shared by `CoverCard` and the
+ * stacks index so both branch on `book.kind` identically (rather than one of
+ * them copying the markup): `audio` centers its square embedded art on the
+ * paper ground (mp3 art is 400×400 — cropping to 2:3 would distort it), or the
+ * typographic fallback when absent; `video` always uses the fallback (no frame
+ * extraction, brief 23); books fill with their full-bleed cover image. The
+ * caller owns the `imgFailed` state so it can also key other UI off it.
+ */
+export function CoverArt({
+  book,
+  imgFailed,
+  onImgError,
+}: {
+  book: LibraryBook;
+  imgFailed: boolean;
+  onImgError: () => void;
+}) {
+  const kind = book.kind ?? "book";
+  // Video never has a cover (no frame extraction, brief 23) so it always
+  // falls to the typographic tile; audio shows its square art when present.
+  const showImage = kind !== "video" && book.hasCover && !imgFailed;
+
+  if (kind === "audio") {
+    return showImage ? (
+      <div className="grid h-full w-full place-items-center bg-paper-container">
+        <img
+          src={coverUrl(book.id)}
+          alt=""
+          onError={onImgError}
+          className="aspect-square w-3/5 rounded-(--radius-cover) object-cover shadow-[0_4px_10px_-4px_rgba(28,27,27,0.3)]"
+        />
+      </div>
+    ) : (
+      <CoverFallback title={book.title} />
+    );
+  }
+
+  return showImage ? (
+    <img
+      src={coverUrl(book.id)}
+      alt=""
+      onError={onImgError}
+      className="h-full w-full object-cover"
+    />
+  ) : (
+    <CoverFallback title={book.title} />
+  );
+}
+
+/**
+ * Format a playback duration in seconds as `m:ss` (e.g. `3:07`), or `h:mm:ss`
+ * once it reaches an hour (e.g. `1:04:12`) — the audio/video sibling of a page
+ * count.
+ */
+function formatDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  if (hours >= 1) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function DotsGlyph({ className }: { className?: string }) {

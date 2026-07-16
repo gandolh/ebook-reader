@@ -1,18 +1,50 @@
 import { useRef, useState, type DragEvent } from "react";
-import { detectFileType, SUPPORTED_FORMATS } from "@ebook-reader/shared";
+import {
+  detectFileType,
+  EPUB_EXTENSIONS,
+  EPUB_MIME_TYPES,
+  MP3_EXTENSIONS,
+  MP3_MIME_TYPES,
+  MP4_EXTENSIONS,
+  MP4_MIME_TYPES,
+  PDF_EXTENSIONS,
+  PDF_MIME_TYPES,
+  WEBM_EXTENSIONS,
+  WEBM_MIME_TYPES,
+} from "@ebook-reader/shared";
 
 /**
  * "Add to Library" dropzone (wiki/design.md): dashed soft border, centered
- * upload glyph, Playfair prompt, helper line, and the solid Ink "Upload a book"
- * button. Drag-drop OR click/button to browse. Validates PDF/EPUB by ext/MIME
- * (D13) before handing the file up; the parent does the actual upload.
+ * upload glyph, Playfair prompt, helper line, and the solid Ink "Upload"
+ * button. Drag-drop OR click/button to browse. Validates every format the
+ * library understands — books (PDF/EPUB), music (MP3), and video (MP4/WebM,
+ * brief 23) — by ext/MIME (D13) before handing the file up; the parent does
+ * the actual upload.
  *
  * Brief 20 item 4 (rendering side): `disabled` mutes the zone and swaps in a
  * "requires connection" state when the library is offline — upload is an
  * online-only action.
+ *
+ * Brief 23c widens the accept list + copy from books-only to the full set;
+ * the shared extension/MIME tables (not a hardcoded string) are the source of
+ * truth so this can never drift from `detectFileType`.
  */
 
-const INVALID_TYPE_MESSAGE = `Unsupported file type. Please upload a ${SUPPORTED_FORMATS.join(" or ")} file.`;
+const ACCEPT = [
+  ...PDF_EXTENSIONS,
+  ...EPUB_EXTENSIONS,
+  ...MP3_EXTENSIONS,
+  ...MP4_EXTENSIONS,
+  ...WEBM_EXTENSIONS,
+  ...PDF_MIME_TYPES,
+  ...EPUB_MIME_TYPES,
+  ...MP3_MIME_TYPES,
+  ...MP4_MIME_TYPES,
+  ...WEBM_MIME_TYPES,
+].join(",");
+
+const INVALID_TYPE_MESSAGE =
+  "Unsupported file type. Please upload a book (PDF/EPUB), music (MP3), or video (MP4/WebM) file.";
 
 export function UploadZone({
   onFile,
@@ -30,7 +62,7 @@ export function UploadZone({
   function accept(file: File) {
     setError(null);
     const type = detectFileType(file.name, file.type);
-    if (type === "pdf" || type === "epub") {
+    if (type) {
       onFile(file);
     } else {
       setError(INVALID_TYPE_MESSAGE);
@@ -73,7 +105,9 @@ export function UploadZone({
         <div className="flex flex-col gap-1">
           <h2 className="font-display text-3xl font-bold text-ink">Add to Library</h2>
           <p className="text-ink-variant">
-            {disabled ? "Uploading requires a connection." : "Drag & drop a PDF or EPUB, or click to browse"}
+            {disabled
+              ? "Uploading requires a connection."
+              : "Drag & drop a book, MP3, or video (MP4/WebM), or click to browse"}
           </p>
         </div>
 
@@ -84,13 +118,13 @@ export function UploadZone({
           title={disabled ? "Requires connection" : undefined}
           className="rounded bg-ink-fill px-6 py-2.5 text-sm font-semibold text-on-ink-fill transition hover:opacity-90 disabled:opacity-50"
         >
-          {disabled ? "Requires connection" : busy ? "Uploading…" : "Upload a book"}
+          {disabled ? "Requires connection" : busy ? "Uploading…" : "Upload a file"}
         </button>
 
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.epub,application/pdf,application/epub+zip"
+          accept={ACCEPT}
           disabled={disabled}
           onChange={(e) => {
             const file = e.target.files?.[0];

@@ -598,7 +598,7 @@ Not started.
 
 ## [2026-07-16] todo | Brief 23 filed — media library (music + video)
 
-Grilled and filed [briefs/todo/23-media-library.md](briefs/todo/23-media-library.md)
+Grilled and filed [briefs/done/23-media-library.md](briefs/done/23-media-library.md)
 directly from an owner request (no source todo): the library also holds
 **mp3 audio and MP4/WebM video**, uploaded and played in-app. Locked: one
 gallery with a persisted type filter (no separate routes); browser-native
@@ -631,3 +631,18 @@ in 3.5s with cover + 14 subjects, file/cover streamed, typed 400/404 errors).
 Briefs moved to done/ with outcome notes; status.md + architecture.md updated.
 **Uncommitted — owner controls git.** Brief 23 (media-library, owner-filed)
 remains in todo/.
+
+## [2026-07-16] done | Brief 23 — media library (music + video) shipped
+
+One library, type filter: mp3/mp4/webm join pdf/epub. Backend: widened
+formats + MIME tables, `kind`/`duration_seconds` columns, `music-metadata`
+(pinned 11.14.0) extraction (ID3 → artist/album/track/genre map onto brief
+21's columns, square 400×400 art), HTTP Range on the file route (206/416,
+ETag preserved). Frontend: lazy AudioPlayer/VideoPlayer with `?token=` src,
+resume-at-locator + throttled progress PATCH (D31 parity); All/Books/Music/
+Videos filter persisted and applied before grouping; per-kind cards; UploadZone
+widened; offline stays books-only. Review caught 5 real bugs (incl. lost
+final-position flush and stale-format misrouting) — fixed. Live E2E with real
+CC0 media on a scratch DB; typecheck + build green. See
+[briefs/done/23-media-library.md](briefs/done/23-media-library.md).
+**Uncommitted — owner controls git.**

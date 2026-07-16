@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { LibraryBook } from "@ebook-reader/shared";
+import type { Format, LibraryBook, MediaKind } from "@ebook-reader/shared";
 
 import { useReaderStore } from "../store/reader-store";
 import { fetchBookFile, fetchLibrary } from "./library-api";
@@ -49,7 +49,12 @@ function resumeLocation(locator: string | null, format: LibraryBook["format"]): 
   return locator;
 }
 
-export function useHydrateBook(bookId: string | undefined): HydrateState {
+export function useHydrateBook(bookId: string | undefined, kind: MediaKind = "book"): HydrateState {
+  // Media (brief 23) doesn't hydrate an in-memory `File`: the player streams
+  // straight from the authenticated file URL. So for audio/video this hook
+  // resolves the library ROW only (title/cover/locator/duration) and skips the
+  // reader-specific machinery — the offline blob store and the byte download.
+  const isMedia = kind !== "book";
   const loadedFile = useReaderStore((s) => s.loadedFile);
   const loadedBookId = useReaderStore((s) => s.loadedBookId);
   const setLoadedBook = useReaderStore((s) => s.setLoadedBook);
@@ -62,8 +67,12 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
   const [offlineBook, setOfflineBook] = useState<LibraryBook | null>(null);
 
   // Only fetch the library when we actually need to hydrate: a book id in the
-  // URL that isn't already the loaded book.
-  const needsHydrate = Boolean(bookId) && (!loadedFile || loadedBookId !== bookId);
+  // URL that isn't already the loaded book. Media never lives in `loadedFile`
+  // (no in-memory File), so it hydrates whenever there's a `bookId` — it just
+  // needs the row.
+  const needsHydrate = isMedia
+    ? Boolean(bookId)
+    : Boolean(bookId) && (!loadedFile || loadedBookId !== bookId);
 
   const library = useQuery({
     queryKey: ["library", "recent"],
@@ -98,6 +107,24 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
 
     let cancelled = false;
 
+    // Media path (brief 23): resolve the row from the live list only — no
+    // offline-store lookup, no byte download, no reader-store writes. The
+    // AudioPlayer/VideoPlayer streams from the file URL and reads the row's
+    // locator/duration directly.
+    if (isMedia) {
+      if (library.isPending) {
+        setStatus("loading");
+        return;
+      }
+      if (library.isError) {
+        setStatus("error");
+        return;
+      }
+      const found = library.data?.find((b) => b.id === bookId);
+      setStatus(found ? "idle" : "not-found");
+      return;
+    }
+
     // Offline-first: a downloaded book opens from its stored blob with no
     // network, whether or not we're connected. Resume from the local progress
     // record when it's newer than the snapshot (last-write-wins on this device).
@@ -109,7 +136,10 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
       setOfflineBook(record.book);
       const wireLocator = resolveOfflineResume(record, local);
       const initialLocation = resumeLocation(wireLocator, record.format);
-      setLoadedBook(offlineRecordToFile(record), record.format, record.id, initialLocation);
+      // This path only runs for books (media never reaches the offline store),
+      // so `format` is always pdf/epub — narrow the widened FileType to the
+      // store's Format.
+      setLoadedBook(offlineRecordToFile(record), record.format as Format, record.id, initialLocation);
       setProgress(1);
       setStatus("idle");
       return true;
@@ -140,6 +170,15 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
         return;
       }
 
+      // A media row can reach the book path via a stale/absent format guess
+      // (`/read?book=<id>` with no format param). The resolved row's `kind` is
+      // the authority — bail BEFORE downloading any file bytes; read.tsx sees
+      // the same resolved row and re-branches to the audio/video player.
+      if (found.kind !== "book") {
+        setStatus("idle");
+        return;
+      }
+
       setProgress(found.sizeBytes > 0 ? 0 : null);
       // The saved resume position is an opaque locator on the wire: a page number
       // (string) for PDF, a CFI for EPUB. Type it for the reader's ReaderLocation.
@@ -148,7 +187,9 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
         const file = await fetchBookFile(found, (fraction) => {
           if (!cancelled) setProgress(fraction);
         });
-        if (!cancelled) setLoadedBook(file, found.format, found.id, initialLocation);
+        // The book path only runs for books (kind === "book"), so `found.format`
+        // is always pdf/epub — narrow the widened FileType to the store's Format.
+        if (!cancelled) setLoadedBook(file, found.format as Format, found.id, initialLocation);
       } catch {
         if (!cancelled) {
           setProgress(null);
@@ -160,7 +201,7 @@ export function useHydrateBook(bookId: string | undefined): HydrateState {
     return () => {
       cancelled = true;
     };
-  }, [needsHydrate, bookId, library.isPending, library.isError, library.data, setLoadedBook, attempt]);
+  }, [needsHydrate, bookId, isMedia, library.isPending, library.isError, library.data, setLoadedBook, attempt]);
 
   const retry = useCallback(() => {
     // The failure may have been the library list itself — refetch it too.

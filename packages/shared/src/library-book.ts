@@ -1,8 +1,8 @@
 import { z } from "zod";
 // Import from the leaf module, not ./index.js, to avoid an import cycle
 // (index.js re-exports this file). `fileTypeSchema` === the format enum
-// (pdf | epub) — same values as `formatSchema`.
-import { fileTypeSchema } from "./file-validation.js";
+// (pdf | epub | mp3 | mp4 | webm); `mediaKindSchema` === book | audio | video.
+import { fileTypeSchema, mediaKindSchema } from "./file-validation.js";
 
 /**
  * Library book contract (decisions.md D24) — the shape the API returns for a
@@ -30,6 +30,18 @@ export const libraryBookSchema = z.object({
   /** Author, or null when it couldn't be extracted. */
   author: z.string().nullable(),
   format: fileTypeSchema,
+  /**
+   * Media kind (brief 23) derived from `format` at upload: "book" for pdf/epub,
+   * "audio" for mp3, "video" for mp4/webm. Drives the gallery type filter and
+   * whether the reader or a media player opens. Existing rows migrate to "book".
+   */
+  kind: mediaKindSchema,
+  /**
+   * Playback length in seconds for audio/video, or null (books, or when the
+   * container didn't expose a duration). The audio/video sibling of a page
+   * count — drives the `mm:ss` caption and resume math.
+   */
+  durationSeconds: z.number().nullable(),
   /**
    * Provenance (brief 22): "upload" for user uploads (the default so existing
    * rows and the upload path stay correct), "gutenberg" for catalog imports.

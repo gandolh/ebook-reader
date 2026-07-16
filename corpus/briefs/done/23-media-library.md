@@ -143,3 +143,18 @@ this brief was grilled directly.
   media.
 - Typecheck + build + tests clean; design.md conformance checklist passes on
   the filter chrome, media cards, and both players.
+
+---
+
+> **Outcome (2026-07-16):** Shipped as specced via orchestrate →
+> plan-split-dispatch (opus backend, opus players ‖ sonnet gallery in
+> parallel lanes). `music-metadata` pinned 11.14.0. Live E2E on a scratch DB
+> with real CC0 media: tagged mp3 → title/artist/album/track/genre/duration +
+> square 400×400 art; mp4/webm → kind video + real durations; `.mkv` → clean
+> 400 naming accepted formats; Safari `bytes=0-1` probe → 206 with correct
+> Content-Range, mid-file 206, 416 unsatisfiable; per-user progress isolated
+> (D31 parity); book upload/read unaffected. Review (3 finders) caught 5 real
+> bugs — final-position flush lost on unmount, stale-format media misrouting
+> through the full book download, narrow MIME variants, MIME-over-extension
+> misclassification, stacks-tile art cropping — all fixed and re-gated.
+> Uncommitted — owner controls git.

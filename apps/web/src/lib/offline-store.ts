@@ -1,4 +1,4 @@
-import type { Format, LibraryBook } from "@ebook-reader/shared";
+import type { FileType, LibraryBook } from "@ebook-reader/shared";
 
 /**
  * Offline store (brief 20) — the data layer that makes an explicitly downloaded
@@ -83,7 +83,11 @@ export interface OfflineBookRecord {
   fileName: string;
   /** Reconstructs `File.type` (application/pdf | application/epub+zip). */
   mime: string;
-  format: Format;
+  // Widened Format → FileType (brief 23) so `book.format` (now the full
+  // pdf/epub/mp3/mp4/webm enum) assigns here without a cast and web compiles.
+  // Type-only: media is books-only-excluded from offline v1, so in practice a
+  // stored record's format is always pdf/epub — no blob/store logic changes.
+  format: FileType;
   /** Snapshot of the `LibraryBook` row at download time, refreshed opportunistically. */
   book: LibraryBook;
   /** Ms epoch the book was first downloaded (stable; drives "downloaded on" if shown). */

@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import Database from "better-sqlite3";
-import type { BookSource, FileType, LibraryBook, LibrarySort } from "@ebook-reader/shared";
+import type { BookSource, FileType, LibraryBook, LibrarySort, MediaKind } from "@ebook-reader/shared";
 import { DATA_DIR, DB_PATH } from "./config.js";
 
 /**
@@ -41,6 +41,14 @@ export interface BookRow {
   source: BookSource;
   /** Upstream id within `source` (the Gutenberg id for imports), else null. */
   source_id: string | null;
+  /**
+   * Media kind (brief 23), derived from `format` at upload: "book" for pdf/epub,
+   * "audio" for mp3, "video" for mp4/webm. Column has `DEFAULT 'book'` so
+   * pre-media rows migrate to books with no backfill.
+   */
+  kind: MediaKind;
+  /** Playback length in seconds for audio/video, or null (books / unknown). */
+  duration_seconds: number | null;
 }
 
 /**
@@ -140,6 +148,10 @@ function ensureBookColumns(): void {
     // source='upload' with no backfill.
     source: "TEXT NOT NULL DEFAULT 'upload'",
     source_id: "TEXT",
+    // Media (brief 23). NOT NULL DEFAULT 'book' migrates existing rows to books
+    // with no backfill; duration is null for books and unknown-duration media.
+    kind: "TEXT NOT NULL DEFAULT 'book'",
+    duration_seconds: "REAL",
   };
   for (const [name, type] of Object.entries(additions)) {
     if (!existing.has(name)) {
@@ -153,10 +165,12 @@ const statements = {
   insert: db.prepare<BookRow>(`
     INSERT INTO books (id, title, author, format, file_path, cover_path,
                        size_bytes, progress, created_at, last_opened_at,
-                       series, series_index, subjects, source, source_id)
+                       series, series_index, subjects, source, source_id,
+                       kind, duration_seconds)
     VALUES (@id, @title, @author, @format, @file_path, @cover_path,
             @size_bytes, @progress, @created_at, @last_opened_at,
-            @series, @series_index, @subjects, @source, @source_id)
+            @series, @series_index, @subjects, @source, @source_id,
+            @kind, @duration_seconds)
   `),
   getById: db.prepare<[string]>("SELECT * FROM books WHERE id = ?"),
   listRecent: db.prepare(
@@ -247,6 +261,8 @@ export function toLibraryBook(
     lastOpenedAt: row.last_opened_at,
     source: row.source,
     sourceId: row.source_id,
+    kind: row.kind,
+    durationSeconds: row.duration_seconds,
   };
 }
 

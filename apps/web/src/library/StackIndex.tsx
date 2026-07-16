@@ -1,8 +1,7 @@
 import { useState } from "react";
 import type { LibraryBook } from "@ebook-reader/shared";
 
-import { coverUrl } from "../lib/library-api";
-import { CoverFallback } from "./CoverFallback";
+import { CoverArt } from "./CoverCard";
 import type { BookGroup } from "./grouping";
 
 /**
@@ -59,26 +58,18 @@ export function StackIndex({
 
 /**
  * The stack's top face — the group's first cover. A non-interactive render of
- * `CoverCard`'s cover art (image or the Playfair fallback tile) so the stack
- * button owns the only interactive element. Keeps the bottom-heavy shadow so it
- * sits above the fanned paper edges.
+ * `CoverCard`'s cover art via the shared `CoverArt` (per-kind: full-bleed book
+ * cover, audio square art centered on paper, video typographic fallback) so the
+ * stack tile matches the gallery instead of cropping media art into 2:3, while
+ * the stack button owns the only interactive element. Keeps the bottom-heavy
+ * shadow so it sits above the fanned paper edges.
  */
 function StackCover({ book }: { book: LibraryBook }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const showImage = book.hasCover && !imgFailed;
 
   return (
     <span className="absolute inset-0 overflow-hidden rounded-(--radius-cover) bg-paper-container shadow-[0_8px_16px_-6px_rgba(28,27,27,0.18)] ring-1 ring-line-soft/40 transition duration-200 group-hover:shadow-[0_14px_24px_-8px_rgba(28,27,27,0.28)]">
-      {showImage ? (
-        <img
-          src={coverUrl(book.id)}
-          alt=""
-          onError={() => setImgFailed(true)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <CoverFallback title={book.title} />
-      )}
+      <CoverArt book={book} imgFailed={imgFailed} onImgError={() => setImgFailed(true)} />
     </span>
   );
 }

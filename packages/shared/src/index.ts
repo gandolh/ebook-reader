@@ -19,10 +19,19 @@ export {
   PDF_EXTENSIONS,
   EPUB_MIME_TYPES,
   EPUB_EXTENSIONS,
+  MP3_MIME_TYPES,
+  MP3_EXTENSIONS,
+  MP4_MIME_TYPES,
+  MP4_EXTENSIONS,
+  WEBM_MIME_TYPES,
+  WEBM_EXTENSIONS,
   pdfMimeSchema,
   epubMimeSchema,
   FILE_TYPES,
   fileTypeSchema,
+  MEDIA_KINDS,
+  mediaKindSchema,
+  kindForFormat,
   DEFAULT_MAX_UPLOAD_MB,
   BYTES_PER_MB,
   DEFAULT_MAX_UPLOAD_BYTES,
@@ -30,7 +39,7 @@ export {
   detectFileType,
   isFileSizeValid,
 } from "./file-validation.js";
-export type { PdfMimeType, EpubMimeType, FileType } from "./file-validation.js";
+export type { PdfMimeType, EpubMimeType, FileType, MediaKind } from "./file-validation.js";
 
 // --- Convert request ------------------------------------------------------
 export { convertRequestSchema } from "./convert-request.js";

@@ -5,7 +5,20 @@ updated: 2026-07-16
 
 # Status — 2026-07-16
 
-**Latest (2026-07-16 pm):** ✅ **Briefs 21–22 shipped — grouped library +
+**Latest (2026-07-16 eve):** ✅ **Brief 23 shipped — media library
+(uncommitted — owner controls)**. One gallery now holds books + music (mp3) +
+video (mp4/webm): `kind`/`durationSeconds` on the contract, `music-metadata`
+extraction (ID3 artist/album/track/genre map onto brief 21's grouping columns,
+square embedded art), HTTP **Range** on `GET /library/:id/file` (Safari-proof
+206/416), lazy Audio/Video players with per-user resume (D31 parity), an
+All/Books/Music/Videos filter ahead of grouping, per-kind cards; offline stays
+books-only; no ffmpeg (video cards are typographic tiles). Review caught 5
+real bugs (lost final-position flush, stale-format misroute, MIME variants,
+MIME-over-extension, stacks art crop) — all fixed; live E2E with real CC0
+media on a scratch DB. Briefs 21–22 were committed earlier today (`8f13cbf`,
+`3d45a8b`).
+
+**Earlier (2026-07-16 pm):** ✅ **Briefs 21–22 shipped — grouped library +
 Gutenberg discover** (orchestrate → plan-split-dispatch, 2 waves + 3 scoped
 review finders + fix pass; **uncommitted — owner controls**). 21: books now
 carry `series`/`seriesIndex`/`subjects` (EPUB OPF + best-effort PDF Info,

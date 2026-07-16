@@ -1,11 +1,12 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   LIBRARY_GROUPS,
   LIBRARY_SORTS,
   type LibraryBook,
   type LibraryGroup,
   type LibrarySort,
+  type MediaKind,
 } from "@ebook-reader/shared";
 
 import { useApplyTheme } from "../reader/chrome/use-apply-theme";
@@ -14,9 +15,12 @@ import { useReconnectProgressSync } from "../lib/use-progress-sync";
 import {
   readGroupByPref,
   readGroupViewPref,
+  readTypeFilterPref,
   writeGroupByPref,
   writeGroupViewPref,
+  writeTypeFilterPref,
   type GroupView,
+  type LibraryTypeFilter,
 } from "../lib/library-prefs";
 import { LibraryHeader } from "../library/LibraryHeader";
 import { UploadZone } from "../library/UploadZone";
@@ -58,6 +62,13 @@ const GROUP_LABELS: Record<LibraryGroup, string> = {
   subject: "Subject",
 };
 
+/** Plural noun for the "no X yet" empty state when a type filter narrows to nothing. */
+const TYPE_FILTER_NOUNS: Record<MediaKind, string> = {
+  book: "books",
+  audio: "music",
+  video: "videos",
+};
+
 export function Home() {
   // The library themes with the shared reader theme (header toggle drives it).
   useApplyTheme();
@@ -72,6 +83,8 @@ export function Home() {
   // lazily from it (same mechanism as the reader's paged⇄scroll toggle).
   const [groupBy, setGroupByState] = useState<LibraryGroup>(readGroupByPref);
   const [view, setViewState] = useState<GroupView>(readGroupViewPref);
+  // Media-type filter (brief 23c) — same durable-preference mechanism.
+  const [typeFilter, setTypeFilterState] = useState<LibraryTypeFilter>(readTypeFilterPref);
 
   const { books, isOffline, isLoading, isError, refetch } = useLibraryList(sort);
   const offlineDownload = useOfflineDownload();
@@ -81,6 +94,16 @@ export function Home() {
   const remove = useDeleteBook();
 
   const grouping = groupBy !== "none";
+
+  // Applied BEFORE grouping so grouping/shelves/stacks operate on the
+  // filtered set (e.g. "Music" narrows to tracks, which then group by
+  // artist/album via the existing author/series mapping). `kind` is
+  // defensively defaulted to "book" for any pre-brief-23 cached row that
+  // predates the field (mirrors grouping.ts's tolerance for older rows).
+  const filteredBooks = useMemo(
+    () => (typeFilter === "all" ? books : books.filter((b) => (b.kind ?? "book") === typeFilter)),
+    [books, typeFilter],
+  );
 
   // Drop the drill-in `?g` (used when it would no longer make sense: leaving
   // Stacks, or re-grouping into a different set of groups).
@@ -107,6 +130,14 @@ export function Home() {
     writeGroupViewPref(next);
     // Shelves has no drill-in; leaving Stacks abandons the focused group.
     if (next === "shelves") clearFocus();
+  }
+
+  function changeTypeFilter(next: LibraryTypeFilter) {
+    setTypeFilterState(next);
+    writeTypeFilterPref(next);
+    // Narrowing/widening the filter can add or drop groups entirely, so any
+    // focused drill-in key may no longer exist in the new grouped set.
+    clearFocus();
   }
 
   // Navigate immediately — /read's hydrate hook does the download and shows a
@@ -150,7 +181,10 @@ export function Home() {
         downloadedCount={offlineDownload.downloaded.length}
         view={view}
         onViewChange={changeView}
-        showViewToggle={grouping && books.length > 0}
+        showViewToggle={grouping && filteredBooks.length > 0}
+        typeFilter={typeFilter}
+        onTypeFilterChange={changeTypeFilter}
+        showTypeFilter={books.length > 0}
       />
 
       {isOffline && <OfflineBanner />}
@@ -221,9 +255,14 @@ export function Home() {
             title="Your library is empty"
             body="Upload your first book above to get started — it'll show up here as a cover card."
           />
+        ) : filteredBooks.length === 0 ? (
+          <EmptyState
+            title={`No ${typeFilter === "all" ? "items" : TYPE_FILTER_NOUNS[typeFilter]} yet`}
+            body="Try a different filter above, or upload something new."
+          />
         ) : groupBy !== "none" ? (
           <GroupedGallery
-            books={books}
+            books={filteredBooks}
             groupBy={groupBy}
             view={view}
             focusedGroup={focusedGroup}
@@ -233,7 +272,7 @@ export function Home() {
           />
         ) : (
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
-            {books.map(renderCover)}
+            {filteredBooks.map(renderCover)}
           </div>
         )}
       </section>

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import type { LibraryBook } from "@ebook-reader/shared";
+import { kindForFormat, type FileType, type LibraryBook, type MediaKind } from "@ebook-reader/shared";
 
 import { useReaderStore } from "../store/reader-store";
 import { coverUrl } from "../lib/library-api";
@@ -20,8 +20,42 @@ const routeApi = getRouteApi("/read");
 const PdfReader = lazy(() => import("../reader/pdf").then((m) => ({ default: m.PdfReader })));
 const EpubReader = lazy(() => import("../reader/epub").then((m) => ({ default: m.EpubReader })));
 
+// The media players (brief 23) are code-split exactly like the readers above, so
+// the book-reading path never downloads player code and vice versa.
+const AudioPlayer = lazy(() => import("../player/AudioPlayer").then((m) => ({ default: m.AudioPlayer })));
+const VideoPlayer = lazy(() => import("../player/VideoPlayer").then((m) => ({ default: m.VideoPlayer })));
+
 /**
- * `/read` — the reader view. Reads the in-memory `File` handed over by the
+ * `/read` — the reader/player view. Branches on the media `kind` derived from
+ * the format (`kindForFormat`): pdf/epub open the book readers below (unchanged),
+ * mp3 opens the AudioPlayer, mp4/webm the VideoPlayer (brief 23). Split into
+ * child components so each path calls its own hooks (the book path hydrates an
+ * in-memory `File`; the media path only resolves the row and streams from the
+ * file URL) without violating the rules of hooks.
+ */
+export function Read() {
+  const search = routeApi.useSearch();
+  // The fresh URL `format` param wins over the store's `loadedFormat`: opening a
+  // media item from the library must not be captured by a STALE `loadedFormat`
+  // left over from a previously-read book (which would misroute media down the
+  // byte-buffering book path). `loadedFormat` is only the fallback for an in-app
+  // book open that navigated without the param. This is a best-effort guess;
+  // the resolved library row's `kind` is the authority (see BookReader).
+  const loadedFormat = useReaderStore((s) => s.loadedFormat);
+  const effectiveFormat = (search.format ?? loadedFormat ?? null) as FileType | null;
+  const kind: MediaKind = effectiveFormat ? kindForFormat(effectiveFormat) : "book";
+
+  if (kind === "audio" || kind === "video") {
+    // Key by book id so switching between two media items remounts the player —
+    // a fresh element and a fresh resume seek for the new track.
+    return <MediaRoute key={search.book ?? ""} bookId={search.book} kind={kind} />;
+  }
+
+  return <BookReader />;
+}
+
+/**
+ * The book (pdf/epub) reading view. Reads the in-memory `File` handed over by the
  * library (Zustand `loadedFile`, set when a cover card is opened) and mounts
  * the matching renderer behind the shared chrome. The `File` lives only in
  * memory, so a direct visit / refresh with nothing loaded shows a "go to
@@ -33,7 +67,7 @@ const EpubReader = lazy(() => import("../reader/epub").then((m) => ({ default: m
  * chrome). The `format` search param stays the type-safe seam; the actual file
  * comes from the store.
  */
-export function Read() {
+function BookReader() {
   const { format, book, dev } = routeApi.useSearch();
   const loadedFile = useReaderStore((s) => s.loadedFile);
   const loadedFormat = useReaderStore((s) => s.loadedFormat);
@@ -53,6 +87,15 @@ export function Read() {
   const devPdf = useDevSampleFile(Boolean(dev) && !devWantsEpub);
   const devEpub = useDevSampleEpub(Boolean(dev) && devWantsEpub);
   const devFile = devWantsEpub ? devEpub : devPdf;
+
+  // Self-correct a misrouted media row: `/read?book=<id>` with no `format` param
+  // (or a stale `loadedFormat`) can land media here as a "book". The resolved
+  // library row's `kind` is the authority — hand off to the player route BEFORE
+  // any file bytes download (the byte download is likewise short-circuited in
+  // useHydrateBook for a non-book row, so nothing was buffered getting here).
+  if (hydrate.book && hydrate.book.kind !== "book") {
+    return <MediaRoute key={book ?? ""} bookId={book} kind={hydrate.book.kind} />;
+  }
 
   const file = loadedFile ?? devFile;
   // Prefer the store's detected format; fall back to the URL param. When a dev
@@ -107,6 +150,49 @@ export function Read() {
   }
 
   return <NoFileState format={effectiveFormat} />;
+}
+
+/**
+ * The media (audio/video) playback view (brief 23). Unlike the book path it
+ * never hydrates an in-memory `File`: `useHydrateBook` (kind-aware) resolves the
+ * library ROW only, and the lazily-loaded player streams from the authenticated
+ * file URL. Resume + progress-PATCH live in the player via `useMediaProgress`.
+ */
+function MediaRoute({ bookId, kind }: { bookId: string | undefined; kind: MediaKind }) {
+  const hydrate = useHydrateBook(bookId, kind);
+
+  // A direct visit / refresh with no book id has nothing to play.
+  if (!bookId) {
+    return <NoFileState format={null} />;
+  }
+
+  // Until the row is known, mirror the book path's opening/error/not-found states.
+  if (!hydrate.book) {
+    if (hydrate.status === "error") {
+      return <OpeningErrorState book={hydrate.book} onRetry={hydrate.retry} />;
+    }
+    if (hydrate.status === "not-found") {
+      return <NoFileState format={null} notFound />;
+    }
+    return <OpeningState book={hydrate.book} progress={null} />;
+  }
+
+  const chunkErrorFallback = (retry: () => void) => (
+    <OpeningErrorState
+      book={hydrate.book}
+      onRetry={retry}
+      detail="Couldn't load the player — the app may have updated. Reload to try again."
+    />
+  );
+
+  const Player = kind === "audio" ? AudioPlayer : VideoPlayer;
+  return (
+    <ReaderChunkErrorBoundary fallback={chunkErrorFallback}>
+      <Suspense fallback={<OpeningState book={hydrate.book} progress={null} />}>
+        <Player book={hydrate.book} />
+      </Suspense>
+    </ReaderChunkErrorBoundary>
+  );
 }
 
 function NoFileState({ format, notFound }: { format: string | null; notFound?: boolean }) {

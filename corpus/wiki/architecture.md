@@ -55,6 +55,17 @@ then reuses the exact upload pipeline above). The library home groups by
 author/series/subject behind a Shelves ⇄ Stacks view toggle; the drilled
 group lives in the `?g` search param.
 
+Since brief 23 the library is a **media library**: formats widened to
+pdf/epub/**mp3/mp4/webm** with `kind` (`book|audio|video`) +
+`duration_seconds` columns. mp3 metadata (`music-metadata`, pure JS) maps
+artist→author, album→series, track→series_index, genre→subjects — so grouping
+works on music unchanged — with embedded art as a square 400×400 cover.
+`GET /library/:id/file` honors **HTTP Range** (206/`Content-Range`, 416,
+`Accept-Ranges: bytes` always) for seek/scrub; `/read` branches on `kind` to
+lazy `AudioPlayer`/`VideoPlayer` (native controls, `?token=` src, per-user
+resume via the same `reading_progress` PATCH). Offline downloads remain
+books-only; no transcoding/ffmpeg.
+
 **Auth (D30) — an `onRequest` guard in front of everything:**
 ```
 web login ──POST /auth/login (username+password)──► verify scrypt hash → mint session token

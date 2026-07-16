@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   catalogSearchParamsSchema,
   importRequestSchema,
+  kindForFormat,
   type CatalogBook,
   type CatalogSearchParams,
   type CatalogSearchResponse,
@@ -352,6 +353,9 @@ export function registerCatalogRoutes(app: FastifyInstance): void {
       // the /discover UI can badge it as "In library".
       source: "gutenberg" as const,
       source_id: String(gutenbergId),
+      // Catalog imports are always EPUB books (brief 23); no playback duration.
+      kind: kindForFormat(format),
+      duration_seconds: null,
     };
     insertBook(row);
 

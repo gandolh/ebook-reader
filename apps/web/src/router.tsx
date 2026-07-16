@@ -1,6 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { z } from "zod";
-import { formatSchema } from "@ebook-reader/shared";
+import { fileTypeSchema } from "@ebook-reader/shared";
 
 import { RootLayout } from "./routes/root-layout";
 import { Home } from "./routes/home";
@@ -33,10 +33,12 @@ const homeRoute = createRoute({
   component: Home,
 });
 
-// `format` is optional + type-safe (validated against the shared Zod enum)
-// so `/read` can be deep-linked once brief 05 wires the uploader to it.
+// `format` is optional + type-safe (validated against the shared Zod enum) so
+// `/read` can be deep-linked. Widened from the pdf/epub `formatSchema` to the
+// full `fileTypeSchema` (pdf/epub/mp3/mp4/webm) in brief 23 so media formats
+// pass validation and `/read` can branch by kind to the audio/video players.
 const readSearchSchema = z.object({
-  format: formatSchema.optional(),
+  format: fileTypeSchema.optional(),
   // The library book id being read (D24). Encoded in the URL so a refresh /
   // direct visit can re-fetch the file from the library instead of losing it
   // (the `File` itself lives only in memory). Absent for dev-sample loads.
