@@ -5,7 +5,22 @@ updated: 2026-07-16
 
 # Status — 2026-07-16
 
-**Latest (2026-07-16):** ✅ **Briefs 19–20 shipped — the app is a PWA**
+**Latest (2026-07-16 pm):** ✅ **Briefs 21–22 shipped — grouped library +
+Gutenberg discover** (orchestrate → plan-split-dispatch, 2 waves + 3 scoped
+review finders + fix pass; **uncommitted — owner controls**). 21: books now
+carry `series`/`seriesIndex`/`subjects` (EPUB OPF + best-effort PDF Info,
+idempotent migration + startup backfill) and the library groups by
+author/series/subject behind a **Shelves ⇄ Stacks view toggle** (shelf rows vs
+fanned-stack drill-in via `?g`, prefs in localStorage; design picked via two
+mockup artifacts). 22: a `/discover` page browses/searches Project Gutenberg
+through an API-side Gutendex proxy (15-min TTL cache, robot-policy-clean) and
+imports EPUBs through the existing upload pipeline with `source`/`sourceId`
+provenance + "In library" badges. Review found 7 real findings (attribute-order
+OPF parsing, mirror-URL resolution, case-split groups, …) — all fixed and
+re-verified; live E2E imported a real book (cover + 14 subjects) against a
+scratch DB. Open: brief 23 (media library) filed by owner, untouched.
+
+**Earlier (2026-07-16):** ✅ **Briefs 19–20 shipped — the app is a PWA**
 (orchestrate → plan-split-dispatch, 2 waves + scoped review + fix pass;
 **uncommitted — owner controls**). 19: installable shell via `vite-plugin-pwa`
 (generateSW, prompt-mode update toast, icons, cover-only runtime cache,
@@ -114,3 +129,6 @@ errors on a fresh load. Typecheck clean ×3.
 | 18 | Stand up a live perf benchmark (CWV/trace) | **done (2026-07-13)** |
 | 19 | PWA phase 1: installable app + cached shell | **done (2026-07-16, uncommitted)** |
 | 20 | PWA phase 2: offline reading | **done (2026-07-16, uncommitted)** |
+| 21 | Group library by metadata (author/series/subject) | **todo** |
+| 22 | Gutenberg discover page | **todo** |
+| 23 | Media library: music + video alongside books | **todo (filed 2026-07-16)** |

@@ -1,7 +1,7 @@
 ---
 title: Make the reading progress bar draggable on the horizontal axis
 created: 2026-07-07
-status: promoted
+status: closed
 tags: [ui, reader]
 ---
 
@@ -17,3 +17,5 @@ instead of only advancing page by page.
 - Dragging updates the current position in the book.
 
 > Promoted to [briefs/done/08-draggable-progress-rail.md](../briefs/done/08-draggable-progress-rail.md) (2026-07-07); scope widened to both readers (PDF gets the rail too).
+
+> Closed 2026-07-16 (owner): shipped in brief 08 — nothing left to do.

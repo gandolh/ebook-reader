@@ -1,6 +1,6 @@
 ---
 summary: How the app is put together — the npm-workspaces monorepo (web/api/shared), layer boundaries, the auth guard, and the upload→store→read data flow.
-updated: 2026-07-13
+updated: 2026-07-16
 ---
 
 # Architecture
@@ -43,6 +43,17 @@ web: file upload ──POST /library──► api: validate (Zod) → store orig
      progress saved ──PATCH /library/:id/progress──► UPSERT caller's reading_progress row (D31)
      remove ──DELETE /library/:id──► delete row + file + thumbnail
 ```
+
+Since 2026-07-16 (briefs 21–22): extraction also pulls `series`/`seriesIndex`/
+`subjects` (EPUB OPF; best-effort PDF Info) with a one-time startup backfill
+for older rows, and books carry `source`/`source_id` provenance
+(`upload` | `gutenberg`). Two catalog routes sit beside the library:
+`GET /catalog/gutenberg` (proxies the public Gutendex API with a 15-min
+in-memory TTL cache; base URL env-overridable via `GUTENDEX_BASE_URL`) and
+`POST /library/import` (downloads a Gutenberg EPUB server-side, size-capped,
+then reuses the exact upload pipeline above). The library home groups by
+author/series/subject behind a Shelves ⇄ Stacks view toggle; the drilled
+group lives in the `?g` search param.
 
 **Auth (D30) — an `onRequest` guard in front of everything:**
 ```

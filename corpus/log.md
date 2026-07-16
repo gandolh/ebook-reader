@@ -535,3 +535,99 @@ Marked D2/D9/D28/D29 revised; updated `overview.md`, `architecture.md` (tables +
 auth flow + backend stack), and `CLAUDE.md` (one-liner, dropped the drift box).
 Also fixed a duplicated line in `open-questions.md`. `bash corpus/lint.sh` passes.
 The library remains shared across users (no per-book ownership).
+
+## [2026-07-16] todo | Brief 21 filed — group the library by metadata
+
+Captured [todos/group-library-by-metadata.md](todos/group-library-by-metadata.md)
+(with inline web research: EPUB OPF `dc:subject` + `calibre:series` /
+`belongs-to-collection` series conventions; PDF Info dict is best-effort only),
+grilled the owner, and promoted it to
+[briefs/done/21-group-library-by-metadata.md](briefs/done/21-group-library-by-metadata.md).
+Locked in the grill: group keys author + series + subject, section-headers-only
+UX, PDFs best-effort → "Unknown" group, multi-valued fields use first value
+only. Extraction extends the native OPF parse in `extract.ts` (no Calibre
+shell-out); existing rows get a one-time backfill. Not started.
+
+## [2026-07-16] decision | Brief 21 display treatment: a shelf per group
+
+Rendered four Quiet Paper mockups of the grouped gallery as an artifact
+("Brief 21 — Group display options": chapter-head rules, shelf per group,
+margin index, collapsible groups — same fake library in each, real
+Playfair/Inter tokens). Owner picked **B — a shelf per group**: caps label +
+count over one horizontal row of covers on a hairline plank, horizontal
+overflow scroll, Unknown shelf last. Brief 21's UI step + acceptance updated
+(it's still in `todo/`, so mutable); drill-in filtering stays out of scope per
+the original grill.
+
+## [2026-07-16] decision | Brief 21 finalized — Shelves ⇄ Stacks behind a View toggle
+
+Second design artifact ("Brief 21 — Library view toggle", interactive Quiet
+Paper demo) approved: the grouped library gets a two-segment **View** control
+(Shelves | Stacks) in the header, visible only while Group by ≠ None. Shelves
+(option B) stays the default browse view; Stacks is the drill-in exploration E
+(fanned stack index → filtered group page via `/library?g=<key>`, browser-Back
+safe). Preference persists to localStorage like paged⇄scroll. Brief 21's UI
+step + acceptance rewritten to the final spec; still pure-client on top of the
+brief's metadata fields — no extra backend work. Ready to build.
+
+## [2026-07-16] maintenance | Closed two stale todos; captured in-app catalog download
+
+Closed `todos/draggable-reading-progress-bar.md` (shipped in brief 08) and
+`todos/add-platform-password.md` (obsolete — D30 per-user accounts replaced
+the shared password) at the owner's direction. Captured a new todo,
+[todos/in-app-catalog-download.md](todos/in-app-catalog-download.md):
+Foliate-style in-app download from free/legal catalogs, with inline research —
+OPDS is the standard; Project Gutenberg via Gutendex is the v1 pick (respect
+the PG robot policy, cache catalog queries, download EPUBs through the
+existing upload pipeline server-side); Standard Ebooks quality is great but
+its full feeds are patron-gated; Internet Archive lending ruled out.
+
+## [2026-07-16] todo | Brief 22 filed — Gutenberg discover page
+
+Grilled and promoted [todos/in-app-catalog-download.md](todos/in-app-catalog-download.md)
+to [briefs/done/22-gutenberg-discover.md](briefs/done/22-gutenberg-discover.md).
+Locked: v1 = Project Gutenberg via the public Gutendex instance (server-side
+TTL cache, PG robot policy honored); a dedicated `/discover` page with search +
+popular landing + topic/language browse, built on the existing TanStack
+Router (code-based tree, Zod search schema) + TanStack Query (import mutation
+invalidates the library query); imports run through the existing upload
+pipeline and land as normal library cards with `source`/`source_id`
+provenance; duplicates get an "In library" badge, reimport allowed. Noted
+schema-migration coordination with unbuilt Brief 21 (disjoint columns).
+Not started.
+
+## [2026-07-16] todo | Brief 23 filed — media library (music + video)
+
+Grilled and filed [briefs/todo/23-media-library.md](briefs/todo/23-media-library.md)
+directly from an owner request (no source todo): the library also holds
+**mp3 audio and MP4/WebM video**, uploaded and played in-app. Locked: one
+gallery with a persisted type filter (no separate routes); browser-native
+formats only — no transcoding and **no ffmpeg** (video cards use the
+typographic tile; metadata via the pure-JS `music-metadata` package, with
+artist/album mapped onto the existing author/series columns so grouping just
+works); full D31 progress parity (per-user resume, seconds-offset locator);
+`GET /library/:id/file` gains HTTP Range support (206) for scrubbing —
+Safari requires it. Offline downloads stay books-only for v1. Inline research:
+MDN codec guide + caniuse (H.264/WebM are the native baseline, HEVC/MKV are
+not), music-metadata (ID3 + cover art + duration, mp4/webm best-effort),
+range-request serving patterns. Noted three-way schema-migration coordination
+with unbuilt briefs 21/22 (disjoint columns). Not started.
+
+## [2026-07-16] done | Briefs 21 + 22 — grouped library and Gutenberg discover shipped
+
+Built via orchestrate → plan-split-dispatch in two waves (21 backend → 21
+frontend → gate → 22 backend → 22 frontend → gate), 3 opus + 1 sonnet chunks.
+Brief 21: series/subjects extraction + migration + backfill, grouped gallery
+with the Shelves ⇄ Stacks toggle (`?g` drill-in, localStorage prefs). Brief 22:
+`/discover` page over an API-side Gutendex proxy (TTL cache) importing EPUBs
+through the existing pipeline with provenance fields. Scoped review (3 finders:
+integration/backend/frontend) surfaced 7 real findings — attribute-order OPF
+meta parsing, EPUB3 refines fragility, mirror sub-path loss in
+GUTENDEX_BASE_URL, numeric XML entities, StackIndex fallback drift, case-split
+group buckets, history spam from debounced search — all fixed and re-gated.
+Verified: typecheck + build green ×3 gates; live API E2E on a scratch data dir
+(seeded user, popular/search proxied, cache hit 167ms→8ms, book #55 imported
+in 3.5s with cover + 14 subjects, file/cover streamed, typed 400/404 errors).
+Briefs moved to done/ with outcome notes; status.md + architecture.md updated.
+**Uncommitted — owner controls git.** Brief 23 (media-library, owner-filed)
+remains in todo/.
