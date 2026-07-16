@@ -1,5 +1,51 @@
 # Log
 
+## [2026-07-16] feature | PWA: installable shell + offline reading (briefs 19–20)
+
+Built via orchestrate → plan-split-dispatch (wave 1 = brief 19 senior; wave 2 =
+brief 20 split into a senior core-lib chunk and a junior UI chunk), then a
+2-finder scoped review + one senior fix pass, then live browser E2E.
+**Uncommitted — owner controls.**
+
+**Brief 19 (shell):** `vite-plugin-pwa@1.3.0`, generateSW, manifest + 4 icon
+PNGs, prompt-mode updates (`UpdateToast` via `useRegisterSW`, no
+skipWaiting/clientsClaim), precache incl. the pdf.js `.mjs` worker (~3 MB / 34
+entries), SWR runtime cache for cover thumbnails only, everything derived from
+`BASE_PATH`/`VITE_API_URL` (base normalized to trailing slash; cover pattern
+from the URL **origin** to match `coverUrl`'s path-dropping `new URL`).
+
+**Brief 20 (offline reading):** `offline-store.ts` (IndexedDB
+`ebook-reader:offline` v2 — `books` metadata / `files` blobs / `progress` local
+rows), offline-first open at the `useHydrateBook` seam, `useLibraryList`
+cached-rows fallback + `isOffline`, per-cover `OfflineToggle`
+(idle/downloading/downloaded/error), offline banner, storage caption,
+upload/delete disabled offline, `useReconnectProgressSync` last-write-wins
+flush. No convert affordance exists in the library UI (convert is disabled
+code in the EPUB reader), so "convert offline state" was N/A.
+
+**Review caught (all fixed):** ① duplicate reconnect PATCHes — unstable
+`books` array identity re-fired the flush effect and there was no in-flight
+guard; **observed live as 3 identical PATCHes per book**, fixed with memoized
+rows + a module-level latch, re-verified at exactly 1. ② single-store IDB
+design rewrote/loaded every blob on snapshot refresh/listing (100s of MB with
+a few PDFs) → v2 blob/metadata split with a live-exercised v1→v2 migration.
+③ resume tiebreak: `snapshotAt` bumped on every refresh could shadow newer
+offline progress → only bump on real change + prefer pending local rows.
+④ stale `offlineBook` could paint the previous book's title/cover on another
+book's opening screen → reset on bookId change. ⑤ icons precached twice →
+dropped `includeAssets` overlap (38→34 entries). ⑥ unhandled rejection in the
+remove path → error state + invalidate in `finally`.
+
+**E2E (production build via `vite preview` + real API, throwaway seeded user,
+removed after):** login → download EPUB (24.6 MB) + PDF → offline reload →
+shell from SW, banner, downloaded covers, upload "Requires connection" →
+EPUB opens offline, jumps to p.25, offline reload resumes at p.25 (exact CFI)
+→ PDF renders offline → reconnect flushes pending progress with a single
+PATCH per book → next rebuild surfaced the update toast; Reload activated the
+new SW and ran the IDB migration cleanly (both blobs intact). New wiki page:
+[wiki/pwa.md](wiki/pwa.md). Typecheck + build clean; no absolute paths in
+tracked files (user rule).
+
 ## [2026-07-13] change | EPUB scroll mode → continuous manager (+ horizontal-scroll & toolbar-overlap fixes)
 
 Follow-up to the image-collapse fix below, informed by an open-source study of

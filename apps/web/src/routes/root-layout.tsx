@@ -1,6 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
 
 import { AuthGate } from "../auth/LockScreen";
+import { UpdateToast } from "../pwa/UpdateToast";
 
 /**
  * Shared app shell. The library home owns its own header (`LibraryHeader` —
@@ -19,6 +20,9 @@ export function RootLayout() {
       <AuthGate>
         <Outlet />
       </AuthGate>
+      {/* App-level, outside the auth gate: a new deploy should surface even on
+          the lock screen so the app is never stuck on an old version. */}
+      <UpdateToast />
     </div>
   );
 }

@@ -7,6 +7,13 @@
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>"
     />
+    <!-- iOS home-screen icon. %BASE_URL% expands to the deploy sub-path so the
+         reference is correct under a non-root BASE_PATH. The manifest + its
+         icon links are injected by vite-plugin-pwa at build time. -->
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <!-- Quiet Paper "paper" surface (--paper); matches the manifest theme_color
+         so the browser UI stays seamless with the page. -->
+    <meta name="theme-color" content="#fcf9f8" />
     <title>ebook-reader</title>
   </head>
   <body>

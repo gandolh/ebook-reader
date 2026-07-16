@@ -8,6 +8,10 @@ import { useReaderStore } from "../store/reader-store";
  * segmented theme toggle (light / sepia / dark) on the right. Mirrors the
  * mockup's sun / book / moon control. Drives the shared `theme` store so the
  * library and the readers stay in sync.
+ *
+ * Brief 20 item 2 adds an unobtrusive storage-used caption under the
+ * wordmark, shown only once at least one book is downloaded — nothing to
+ * report otherwise, so nothing renders.
  */
 
 const THEMES: { value: Theme; label: string; glyph: ReactNode }[] = [
@@ -16,15 +20,26 @@ const THEMES: { value: Theme; label: string; glyph: ReactNode }[] = [
   { value: "dark", label: "Dark theme", glyph: <MoonGlyph /> },
 ];
 
-export function LibraryHeader() {
+export function LibraryHeader({
+  storage,
+  downloadedCount,
+}: {
+  /** `useOfflineDownload().storage` — the origin's platform-wide usage/quota. */
+  storage?: { usage: number; quota: number } | null;
+  /** `useOfflineDownload().downloaded.length` — gates whether to show `storage` at all. */
+  downloadedCount?: number;
+}) {
   const theme = useReaderStore((s) => s.theme);
   const setTheme = useReaderStore((s) => s.setTheme);
 
   return (
     <header className="flex items-center justify-between gap-4 border-b border-line-soft/50 pb-5">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-accent">
-        ebook-reader
-      </h1>
+      <div className="flex flex-col gap-1">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-accent">
+          ebook-reader
+        </h1>
+        <StorageCaption storage={storage} downloadedCount={downloadedCount ?? 0} />
+      </div>
 
       <div
         role="radiogroup"
@@ -55,6 +70,40 @@ export function LibraryHeader() {
       </div>
     </header>
   );
+}
+
+/**
+ * Storage-used indicator (brief 20 item 2) — a quiet caption, not a widget.
+ * Renders nothing until there's something to say: no downloads, or no
+ * `storage.estimate()` support, both mean "nothing to report" rather than an
+ * error state.
+ */
+function StorageCaption({
+  storage,
+  downloadedCount,
+}: {
+  storage?: { usage: number; quota: number } | null;
+  downloadedCount: number;
+}) {
+  if (downloadedCount === 0 || !storage || storage.quota <= 0) return null;
+  const pct = Math.min(100, Math.round((storage.usage / storage.quota) * 100));
+  return (
+    <p
+      className="text-xs text-ink-variant"
+      title={`${formatBytes(storage.usage)} used of ${formatBytes(storage.quota)} available on this device`}
+    >
+      {formatBytes(storage.usage)} offline &middot; {pct}% of device storage
+    </p>
+  );
+}
+
+/** Human-readable byte size (`1536` → `"1.5 KB"`), binary (1024) units. */
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  return `${exponent === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[exponent]}`;
 }
 
 const ICON = "h-4 w-4";

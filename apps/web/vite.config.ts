@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { VitePWA } from "vite-plugin-pwa";
 
 // The single .env lives at the repo root (shared with the API), so point Vite's
 // env loading there instead of the default per-app dir.
@@ -21,11 +22,112 @@ export default defineConfig(({ mode }) => {
     );
   }
 
+  // Served under a sub-path in production (e.g. /ebook-reader/). Everything the
+  // PWA emits — manifest scope/start_url, the service-worker registration
+  // scope, precache URLs — must respect this, so derive it once and reuse it
+  // rather than hardcoding "/". scope/start_url/navigateFallback all assume a
+  // trailing slash, so normalize one on (BASE_PATH may be set without it).
+  const rawBase = env.BASE_PATH ?? "/";
+  const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+
+  // Runtime-cache match for cover thumbnails ONLY (brief 19). Covers are the
+  // one API surface we cache: immutable-per-book images fetched cross-origin by
+  // `<img src="<api-origin>/library/:id/cover?token=…">`. `coverUrl` builds those
+  // with `new URL("/library/…", API_BASE_URL)`, whose leading slash DROPS any
+  // path segment of the base — so the real request hits the API ORIGIN, not
+  // `<base>/library/…`. Derive the pattern from the origin to match exactly (and
+  // nothing else — no general API caching; auth + freshness stay server-driven).
+  // Regex-escaped; unanchored tail lets the `?token=…` query ride along.
+  const apiOrigin = new URL(env.VITE_API_URL).origin.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&",
+  );
+  const coverUrlPattern = new RegExp(`^${apiOrigin}/library/[^/]+/cover`);
+
   return {
-    // Served under a sub-path in production (e.g. /ebook-reader/). The deploy
-    // tool injects BASE_PATH at build time; defaults to "/" for local dev/preview.
-    base: env.BASE_PATH ?? "/",
+    base,
     envDir: REPO_ROOT,
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      VitePWA({
+        // "prompt": never silently swap the running app out from under the
+        // reader. A waiting worker surfaces the reload toast (see
+        // src/pwa/UpdateToast.tsx) and only activates on the user's click.
+        registerType: "prompt",
+        // We register the SW ourselves via `useRegisterSW` in the toast, so the
+        // plugin must NOT also inject its own registration script (that would
+        // double-register).
+        injectRegister: false,
+        // The four icon PNGs (apple-touch + 3 manifest icons) live in `public/`
+        // and are copied to dist root, where the widened `png` glob below already
+        // precaches them. Disable the plugin's own icon inclusion so each is
+        // precached ONCE, not twice: `includeManifestIcons: false` drops the
+        // auto-added manifest icons, and no `includeAssets` keeps apple-touch
+        // single (its <link> is hand-written in index.html, not injected here).
+        includeManifestIcons: false,
+        manifest: {
+          name: "Ebook Reader",
+          short_name: "Ebooks",
+          description:
+            "Your personal library — upload PDFs and EPUBs, then read anywhere.",
+          // Standalone so the installed app drops the browser chrome and feels
+          // like a native reader.
+          display: "standalone",
+          // Scope + start_url follow the deploy sub-path (see `base` above), so
+          // installs work under a non-root BASE_PATH, not just "/".
+          scope: base,
+          start_url: base,
+          orientation: "portrait",
+          // Raw hex is sanctioned in manifest JSON only (design.md / D27). Both
+          // are the Quiet Paper "paper" surface (--paper #fcf9f8): the app is
+          // paper-first and light by default, so browser UI + the splash ground
+          // stay seamless with the page, never glowing.
+          theme_color: "#fcf9f8",
+          background_color: "#fcf9f8",
+          // Icon `src`s are relative, so they resolve against the manifest URL
+          // (itself emitted under `base`) — base-correct without hardcoding it.
+          icons: [
+            { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
+            { src: "pwa-512x512.png", sizes: "512x512", type: "image/png" },
+            {
+              src: "pwa-maskable-512x512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
+            },
+          ],
+        },
+        workbox: {
+          // Precache the built shell. Extend the default globs: `mjs` catches
+          // the pdf.js worker chunk (emitted as ESM) and `woff`/`woff2` the
+          // self-hosted @fontsource files — otherwise both are silently left
+          // out of the shell.
+          globPatterns: ["**/*.{js,mjs,css,html,ico,png,svg,woff,woff2}"],
+          // The pdf.js worker chunk is large; lift the precache size ceiling
+          // (default 2 MiB) so the shell caches whole rather than partially.
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          // SPA fallback: unknown navigations resolve to the app shell (index),
+          // base-aware so deep links work under a sub-path.
+          navigateFallback: `${base}index.html`,
+          runtimeCaching: [
+            {
+              // Cover thumbnails only (cross-origin API). Stale-while-revalidate
+              // = instant paint from cache, refresh in the background; covers
+              // are immutable per book so staleness is harmless.
+              urlPattern: coverUrlPattern,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "cover-thumbnails",
+                expiration: { maxEntries: 200 },
+                // `<img>` requests are cross-origin without CORS, so responses
+                // are opaque (status 0); cache those as well as 200s.
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
+      }),
+    ],
   };
 });

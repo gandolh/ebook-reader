@@ -1,11 +1,23 @@
 ---
 summary: Dated snapshot of current state — a one-liner per brief/area and where things stand right now. The living dashboard.
-updated: 2026-07-13
+updated: 2026-07-16
 ---
 
-# Status — 2026-07-13
+# Status — 2026-07-16
 
-**Latest (2026-07-13):** ✅ **Briefs 11–18 shipped** (built via orchestrate →
+**Latest (2026-07-16):** ✅ **Briefs 19–20 shipped — the app is a PWA**
+(orchestrate → plan-split-dispatch, 2 waves + scoped review + fix pass;
+**uncommitted — owner controls**). 19: installable shell via `vite-plugin-pwa`
+(generateSW, prompt-mode update toast, icons, cover-only runtime cache,
+BASE_PATH-safe). 20: offline reading — per-book "Available offline" toggle,
+IndexedDB v2 (metadata/blobs/progress split), offline library fallback +
+banner, last-write-wins progress flush on reconnect. Review caught 6 findings
+incl. a live-confirmed 3×-duplicate-PATCH bug and a blob-thrash design flaw;
+all fixed and re-verified E2E in a real browser (EPUB + PDF read fully
+offline, exact-position resume, single PATCH on reconnect). See
+[pwa.md](pwa.md) + the 2026-07-16 log entry.
+
+**Earlier (2026-07-13):** ✅ **Briefs 11–18 shipped** (built via orchestrate →
 plan-split-dispatch, 6 waves; reviewed + fixed; **uncommitted — owner controls**).
 Reader UX (11 paged⇄scroll toggle, 12 bottom-bar clustering, 14 PDF/EPUB frame
 parity via shared `ReaderHeader`), a bug fix (13 page-jump digits), and a perf
@@ -100,3 +112,5 @@ errors on a fresh load. Typecheck clean ×3.
 | 16 | Perf: reduce EPUB open cost (double-parse) | **done (2026-07-13)** |
 | 17 | Perf: trim font payload | **done (2026-07-13)** |
 | 18 | Stand up a live perf benchmark (CWV/trace) | **done (2026-07-13)** |
+| 19 | PWA phase 1: installable app + cached shell | **done (2026-07-16, uncommitted)** |
+| 20 | PWA phase 2: offline reading | **done (2026-07-16, uncommitted)** |

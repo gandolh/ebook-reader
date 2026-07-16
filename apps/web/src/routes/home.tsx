@@ -1,12 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { LIBRARY_SORTS, type LibraryBook, type LibrarySort } from "@ebook-reader/shared";
 
 import { useApplyTheme } from "../reader/chrome/use-apply-theme";
-import { useDeleteBook, useLibrary, useUploadBook } from "../lib/use-library";
+import { useDeleteBook, useLibraryList, useOfflineDownload, useUploadBook } from "../lib/use-library";
+import { useReconnectProgressSync } from "../lib/use-progress-sync";
 import { LibraryHeader } from "../library/LibraryHeader";
 import { UploadZone } from "../library/UploadZone";
 import { CoverCard } from "../library/CoverCard";
+import { OfflineBanner } from "../library/OfflineBanner";
 
 /**
  * `/` — the **library home** (wiki/reader.md "Library home", D24). Header +
@@ -16,6 +18,15 @@ import { CoverCard } from "../library/CoverCard";
  *
  * Opening a card fetches the stored file (`GET /library/:id/file`) into the
  * Zustand handoff seam the readers already consume, then navigates to `/read`.
+ *
+ * Brief 20 (offline reading) adopts the offline-aware `useLibraryList` in
+ * place of the plain `useLibrary` fetch: `isOffline` means the grid below is
+ * showing cached downloaded-book rows because `GET /library` failed, which
+ * drives the banner and disables the online-only actions (upload, remove,
+ * starting a new download — removing a download stays enabled, it's local).
+ * `useOfflineDownload` drives the per-card toggle + the header's storage
+ * caption. `useReconnectProgressSync` is mounted here (once) because this is
+ * where the live library rows are known, per its own contract.
  */
 
 const SORT_LABELS: Record<LibrarySort, string> = {
@@ -32,7 +43,10 @@ export function Home() {
 
   const [sort, setSort] = useState<LibrarySort>("recent");
 
-  const library = useLibrary(sort);
+  const { books, isOffline, isLoading, isError, refetch } = useLibraryList(sort);
+  const offlineDownload = useOfflineDownload();
+  useReconnectProgressSync(books);
+
   const upload = useUploadBook();
   const remove = useDeleteBook();
 
@@ -43,13 +57,13 @@ export function Home() {
     void navigate({ to: "/read", search: { format: book.format, book: book.id } });
   }
 
-  const books = library.data ?? [];
-
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-5 py-8 text-ink md:px-16">
-      <LibraryHeader />
+      <LibraryHeader storage={offlineDownload.storage} downloadedCount={offlineDownload.downloaded.length} />
 
-      <UploadZone onFile={(file) => upload.mutate(file)} busy={upload.isPending} />
+      {isOffline && <OfflineBanner />}
+
+      <UploadZone onFile={(file) => upload.mutate(file)} busy={upload.isPending} disabled={isOffline} />
 
       {upload.isError && (
         <p role="alert" className="-mt-6 rounded border border-danger/40 bg-danger-soft/50 px-4 py-2.5 text-sm text-danger">
@@ -78,12 +92,21 @@ export function Home() {
           )}
         </div>
 
-        {library.isLoading ? (
+        {isLoading ? (
           <GallerySkeleton />
-        ) : library.isError ? (
+        ) : isError ? (
           <EmptyState
             title="Couldn't load your library"
             body="The API may be offline. Start it with npm run dev and refresh."
+            action={
+              <button
+                type="button"
+                onClick={refetch}
+                className="rounded border border-line-soft px-4 py-1.5 text-sm font-medium text-ink-variant transition hover:text-ink"
+              >
+                Try again
+              </button>
+            }
           />
         ) : books.length === 0 ? (
           <EmptyState
@@ -93,7 +116,24 @@ export function Home() {
         ) : (
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
             {books.map((book) => (
-              <CoverCard key={book.id} book={book} onOpen={openBook} onDelete={(b) => remove.mutate(b)} />
+              <CoverCard
+                key={book.id}
+                book={book}
+                onOpen={openBook}
+                onDelete={(b) => remove.mutate(b)}
+                deleteDisabled={isOffline}
+                offline={
+                  offlineDownload.isSupported
+                    ? {
+                        state: offlineDownload.stateOf(book.id),
+                        progress: offlineDownload.progressOf(book.id),
+                        canDownload: !isOffline,
+                        onDownload: () => offlineDownload.download(book),
+                        onRemove: () => offlineDownload.remove(book.id),
+                      }
+                    : undefined
+                }
+              />
             ))}
           </div>
         )}
@@ -102,11 +142,12 @@ export function Home() {
   );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
+function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-line-soft/50 bg-paper-low/40 px-6 py-16 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-line-soft/50 bg-paper-low/40 px-6 py-16 text-center">
       <p className="font-display text-xl font-semibold text-ink">{title}</p>
       <p className="max-w-md text-ink-variant">{body}</p>
+      {action}
     </div>
   );
 }
