@@ -11,7 +11,11 @@ import {
   PORT,
 } from "./config.js";
 import { registerConvertRoute } from "./convert-route.js";
-import { backfillLibraryMetadata, registerLibraryRoutes } from "./library-routes.js";
+import {
+  backfillLibraryMetadata,
+  reconcileMissingCovers,
+  registerLibraryRoutes,
+} from "./library-routes.js";
 import { registerCatalogRoutes } from "./catalog-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 
@@ -97,6 +101,13 @@ async function start(): Promise<void> {
     // are logged, not fatal.
     void backfillLibraryMetadata(app.log).catch((err) => {
       app.log.error({ err }, "library metadata backfill failed");
+    });
+    // Drop cover paths whose thumbnail file is missing (e.g. a library DB
+    // carried over from another machine with stale absolute paths), so the
+    // client renders its fallback tile instead of firing a doomed cover request
+    // that surfaces as ERR_BLOCKED_BY_ORB. Off the request path; non-fatal.
+    void reconcileMissingCovers(app.log).catch((err) => {
+      app.log.error({ err }, "cover reconcile failed");
     });
   } catch (err) {
     app.log.error(err);

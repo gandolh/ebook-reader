@@ -19,6 +19,16 @@ export const NOTE_TOOLS = ["pen", "highlighter"] as const;
 export const noteToolSchema = z.enum(NOTE_TOOLS);
 export type NoteTool = z.infer<typeof noteToolSchema>;
 
+/**
+ * Page background ruling (v1 follow-up): plain paper, horizontal ruled lines, or
+ * a square grid. Drawn behind the ink in normalized page space so it scales with
+ * the sheet. `blank` is the default, so notes stored before this field parse
+ * cleanly (the `.default` on `notePageSchema.template` fills it in).
+ */
+export const PAGE_TEMPLATES = ["blank", "ruled", "grid"] as const;
+export const pageTemplateSchema = z.enum(PAGE_TEMPLATES);
+export type PageTemplate = z.infer<typeof pageTemplateSchema>;
+
 /** One sampled input point: [x, y, pressure] — x/y normalized (see convention). */
 export const strokePointSchema = z.tuple([z.number(), z.number(), z.number()]);
 export type StrokePoint = z.infer<typeof strokePointSchema>;
@@ -49,6 +59,12 @@ export type TextBox = z.infer<typeof textBoxSchema>;
 export const notePageSchema = z.object({
   strokes: z.array(strokeSchema),
   texts: z.array(textBoxSchema),
+  /**
+   * Background ruling drawn behind the ink. `.default` (not `.optional`) so the
+   * parsed shape always carries a value — notes stored before this field read
+   * back as "blank", and the editor never has to branch on `undefined`.
+   */
+  template: pageTemplateSchema.default("blank"),
 });
 export type NotePage = z.infer<typeof notePageSchema>;
 

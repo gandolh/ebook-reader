@@ -25,7 +25,7 @@ import {
  * `data` column; the wire shape is the shared `Note` / `NoteSummary`.
  */
 
-const BLANK_PAGE: NotePage = { strokes: [], texts: [] };
+const BLANK_PAGE: NotePage = { strokes: [], texts: [], template: "blank" };
 
 /** Decode the JSON `data` column to `NotePage[]` (empty on garbage). */
 function parsePages(data: string): NotePage[] {

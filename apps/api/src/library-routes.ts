@@ -20,12 +20,14 @@ import {
 } from "@ebook-reader/shared";
 import { LIBRARY_FILES_DIR, MAX_UPLOAD_BYTES, THUMBNAILS_DIR } from "./config.js";
 import {
+  clearBookCover,
   deleteBook,
   getBook,
   getUserProgress,
   insertBook,
   listBooks,
   listBooksNeedingMetadata,
+  listBooksWithCover,
   listUserProgress,
   toLibraryBook,
   touchOpened,
@@ -357,4 +359,37 @@ export async function backfillLibraryMetadata(log: FastifyBaseLogger): Promise<v
     }
   }
   log.info({ updated, total: pending.length }, "library metadata backfill: done");
+}
+
+/**
+ * One-time startup reconcile for stale cover paths (open-questions.md). A row
+ * can record a `cover_path` whose file no longer exists — most commonly a
+ * library DB carried over from another machine, where the stored paths are
+ * absolute (`D:\...`) and don't resolve here. Left alone, the client sees
+ * `hasCover: true`, requests the cover, and gets a 404 that a cross-origin
+ * `<img>` surfaces as the noisy `ERR_BLOCKED_BY_ORB`.
+ *
+ * Nulling the path at startup makes `hasCover` report false, so the client
+ * renders its per-kind fallback tile directly and never fires the doomed
+ * request. Best-effort, fired off the request path (not awaited); a re-upload
+ * that regenerates the thumbnail restores the path.
+ */
+export async function reconcileMissingCovers(log: FastifyBaseLogger): Promise<void> {
+  const withCover = listBooksWithCover();
+  if (withCover.length === 0) return;
+
+  let cleared = 0;
+  for (const row of withCover) {
+    if (row.cover_path === null) continue; // narrowing; the query already filters
+    try {
+      await stat(row.cover_path);
+    } catch {
+      clearBookCover(row.id);
+      cleared += 1;
+      log.warn({ id: row.id, coverPath: row.cover_path }, "cover reconcile: file missing, cleared cover_path");
+    }
+  }
+  if (cleared > 0) {
+    log.info({ cleared, total: withCover.length }, "cover reconcile: done");
+  }
 }

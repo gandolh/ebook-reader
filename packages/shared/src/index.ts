@@ -103,6 +103,8 @@ export {
   PAGE_ASPECT,
   NOTE_TOOLS,
   noteToolSchema,
+  PAGE_TEMPLATES,
+  pageTemplateSchema,
   strokePointSchema,
   strokeSchema,
   textBoxSchema,
@@ -115,6 +117,7 @@ export {
 } from "./notes.js";
 export type {
   NoteTool,
+  PageTemplate,
   StrokePoint,
   Stroke,
   TextBox,

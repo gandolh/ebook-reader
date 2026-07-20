@@ -1,5 +1,40 @@
 # Log
 
+## [2026-07-20] follow-ups | Cover reconcile + /atrium deploy rename + Notes page templates
+
+Continued the [HANDOFF](HANDOFF.md) — picked up three of its open follow-ups.
+
+**#1 Stale covers (open-questions):** new startup reconcile `reconcileMissingCovers`
+in [library-routes.ts](../apps/api/src/library-routes.ts) nulls `cover_path` when
+the thumbnail file is gone (stale absolute-path rows from another box), so
+`hasCover` reports false and the client renders its fallback tile instead of
+firing the doomed cover request that surfaced as `ERR_BLOCKED_BY_ORB`. Fired off
+the request path like the metadata backfill; db helpers `listBooksWithCover` /
+`clearBookCover` added. The `file_path` half is unchanged (column is NOT NULL).
+
+**#4 Deploy sub-path `/ebook-reader/` → `/atrium/` (D32):** the web app is fully
+parameterized on `BASE_PATH` (zero app-code change); the value lives in the
+**vps-deploy** repo. Updated `projects/ebook-reader/.env` + `.env.example`
+(BASE_PATH, REMOTE_DIR `/var/www/atrium`, PUBLIC_URL, SERVER_DIR `/srv/atrium-api`,
+PM2_NAME `atrium-api`), the shared `infrastructure/Caddyfile` client route, and
+`deploy.ts` defaults; added a **`teardown`** phase that migrates the old API dir
+(preserving the SQLite DB + uploaded library + covers) then removes the old
+client dir + pm2 process. localStorage survives (keyed to origin, not path → no
+logout); the installed PWA re-scopes to `/atrium/` (re-add to home screen).
+**Server cutover not run** (no SSH from the build box): owner runs
+`teardown --confirm` then `all`.
+
+**#5 Notes page templates:** blank / ruled / grid page backgrounds (a v1
+follow-up from brief 26). New `template` field on `notePageSchema`
+(`.default("blank")` → old notes parse cleanly); rendered as an SVG ruling behind
+the ink in the scaled viewBox space; per-page selector in the editor toolbar
+(undoable). No new deps.
+
+Verified: `@ebook-reader/shared` build, `apps/web` production build + PWA, and
+`apps/api` typecheck all clean. **Not live-audited** — the agent-browser /
+Chrome-for-Testing path is flaky on this box (see HANDOFF); the template ruling
+is deterministic SVG, code-verified only. **Uncommitted — owner controls git.**
+
 ## [2026-07-20] build+audit | Atrium rebrand (briefs 24–25) + Notes tab (brief 26)
 
 Promoted the two capture todos into three briefs and built them via orchestrate

@@ -11,7 +11,9 @@ import {
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   PAGE_ASPECT,
+  PAGE_TEMPLATES,
   type NotePage,
+  type PageTemplate,
   type Stroke,
   type StrokePoint,
   type TextBox,
@@ -44,7 +46,15 @@ const ERASE_RADIUS = 0.02;
 // ×VB) while storage stays normalized. The SVG uses the same viewBox.
 const STROKE_VB = 1000;
 
-const BLANK_PAGE: NotePage = { strokes: [], texts: [] };
+const BLANK_PAGE: NotePage = { strokes: [], texts: [], template: "blank" };
+
+// Ruling geometry + color live in the scaled viewBox space (STROKE_VB wide) so
+// lines scale with the sheet. The paper is a fixed light surface in every theme
+// (see the sheet background below), so the ruling uses a fixed quiet warm-gray
+// hex to match — the same deliberate exception to "tokens only" as the ink
+// colors here.
+const RULE_COLOR = "#d9d3c4";
+const RULE_STEP = STROKE_VB / 24; // line spacing as ~1/24 of the page width
 
 /** Build an SVG path string from a perfect-freehand outline. */
 function outlineToPath(outline: number[][]): string {
@@ -73,6 +83,40 @@ function strokePath(stroke: Stroke): string {
     simulatePressure: !realPressure,
   });
   return outlineToPath(outline);
+}
+
+/**
+ * The page's background ruling, drawn behind the ink in the same scaled viewBox
+ * space (so it scales with the sheet, `preserveAspectRatio="none"` like the ink
+ * layer). `blank` renders nothing.
+ */
+function PageBackground({ template }: { template: PageTemplate }) {
+  if (template === "blank") return null;
+  const w = STROKE_VB;
+  const h = STROKE_VB * PAGE_ASPECT;
+  const lines: ReactNode[] = [];
+  // Horizontal rules (ruled + grid). Start one step down so the top edge is clear.
+  for (let y = RULE_STEP; y < h - 1; y += RULE_STEP) {
+    lines.push(<line key={`h${y}`} x1={0} y1={y} x2={w} y2={y} />);
+  }
+  // Vertical rules (grid only).
+  if (template === "grid") {
+    for (let x = RULE_STEP; x < w - 1; x += RULE_STEP) {
+      lines.push(<line key={`v${x}`} x1={x} y1={0} x2={x} y2={h} />);
+    }
+  }
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      stroke={RULE_COLOR}
+      strokeWidth={1.2}
+      aria-hidden="true"
+    >
+      {lines}
+    </svg>
+  );
 }
 
 export function NoteEditor({ id }: { id: string }) {
@@ -118,6 +162,17 @@ export function NoteEditor({ id }: { id: string }) {
       setPages((prev) => prev.map((p, i) => (i === pageIndex ? fn(p) : p)));
     },
     [pageIndex],
+  );
+
+  // Page background is a per-page property; changing it is an undoable structural
+  // edit like adding a page.
+  const setPageTemplate = useCallback(
+    (t: PageTemplate) => {
+      if ((pages[pageIndex]?.template ?? "blank") === t) return;
+      snapshot();
+      mutatePage((p) => ({ ...p, template: t }));
+    },
+    [pages, pageIndex, snapshot, mutatePage],
   );
 
   function undo() {
@@ -273,6 +328,8 @@ export function NoteEditor({ id }: { id: string }) {
         setColor={setColor}
         thickness={thickness}
         setThickness={setThickness}
+        template={page.template}
+        setTemplate={setPageTemplate}
       />
     </div>
   );
@@ -430,6 +487,8 @@ function NoteSheet({
         if (drawing.current && e.pointerId === activePointer.current) endStroke();
       }}
     >
+      <PageBackground template={page.template} />
+
       <svg
         viewBox={`0 0 ${STROKE_VB} ${STROKE_VB * PAGE_ASPECT}`}
         preserveAspectRatio="none"
@@ -567,6 +626,8 @@ function Toolbar({
   setColor,
   thickness,
   setThickness,
+  template,
+  setTemplate,
 }: {
   tool: Tool;
   setTool: (t: Tool) => void;
@@ -574,6 +635,8 @@ function Toolbar({
   setColor: (c: string) => void;
   thickness: number;
   setThickness: (t: number) => void;
+  template: PageTemplate;
+  setTemplate: (t: PageTemplate) => void;
 }) {
   const tools: { value: Tool; label: string; glyph: string }[] = [
     { value: "pen", label: "Pen", glyph: "✎" },
@@ -581,6 +644,11 @@ function Toolbar({
     { value: "eraser", label: "Eraser", glyph: "⌫" },
     { value: "text", label: "Text", glyph: "T" },
   ];
+  const templates: Record<PageTemplate, { label: string; glyph: string }> = {
+    blank: { label: "Blank page", glyph: "▢" },
+    ruled: { label: "Ruled page", glyph: "≣" },
+    grid: { label: "Grid page", glyph: "▦" },
+  };
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center justify-center gap-3 border-t border-line-soft/50 bg-paper/95 px-4 py-2.5 backdrop-blur-sm">
       <div role="radiogroup" aria-label="Tool" className="flex items-center gap-1 rounded border border-line-soft/60 bg-paper-low p-0.5">
@@ -637,6 +705,30 @@ function Toolbar({
             <span className="rounded-full bg-ink" style={{ width: 4 + i * 4, height: 4 + i * 4 }} />
           </button>
         ))}
+      </div>
+
+      {/* Page background — a per-page property (blank / ruled / grid). */}
+      <div role="radiogroup" aria-label="Page background" className="flex items-center gap-1 rounded border border-line-soft/60 bg-paper-low p-0.5">
+        {PAGE_TEMPLATES.map((value: PageTemplate) => {
+          const active = template === value;
+          const { label, glyph } = templates[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={label}
+              title={label}
+              onClick={() => setTemplate(value)}
+              className={`grid h-9 w-9 place-items-center rounded-[3px] text-base transition focus-visible:outline-2 focus-visible:outline-accent ${
+                active ? "bg-paper-raised text-accent shadow-sm" : "text-ink-variant hover:text-ink"
+              }`}
+            >
+              {glyph}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

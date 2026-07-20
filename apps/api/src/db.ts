@@ -214,6 +214,10 @@ const statements = {
   // --- Metadata backfill (brief 21) ----------------------------------------
   // Rows added before the series/subjects columns existed have subjects=NULL.
   listNeedingMetadata: db.prepare("SELECT * FROM books WHERE subjects IS NULL"),
+  // Rows that claim a cover, for the startup reconcile that nulls the path when
+  // the thumbnail file is actually gone (stale absolute paths from another box).
+  listWithCover: db.prepare("SELECT * FROM books WHERE cover_path IS NOT NULL"),
+  clearCoverPath: db.prepare<[string]>("UPDATE books SET cover_path = NULL WHERE id = ?"),
   // COALESCE on author lets a re-scan fill a previously-null author (PDFs) but
   // never clobber one already stored. `subjects` is set to a JSON array (never
   // null) so the row drops out of `listNeedingMetadata` and can't loop.
@@ -335,6 +339,20 @@ export function deleteBook(id: string): void {
  */
 export function listBooksNeedingMetadata(): BookRow[] {
   return statements.listNeedingMetadata.all() as BookRow[];
+}
+
+/** Books whose row records a cover path, for the startup cover reconcile. */
+export function listBooksWithCover(): BookRow[] {
+  return statements.listWithCover.all() as BookRow[];
+}
+
+/**
+ * Drop a book's `cover_path` (→ NULL) when its thumbnail file has gone missing,
+ * so `hasCover` reports false on the wire and the client stops requesting a
+ * cover that will only 404 (see `reconcileMissingCovers`).
+ */
+export function clearBookCover(id: string): void {
+  statements.clearCoverPath.run(id);
 }
 
 /**
