@@ -8,7 +8,10 @@ import { updateProgress } from "../lib/library-api";
  * readers use — `updateProgress` (`PATCH /library/:id/progress`) — on the
  * player's own cadence:
  *
- * - `loadedmetadata` → seek to the saved `locator` (a seconds offset string).
+ * - `loadedmetadata` → seek to the saved `locator` (a seconds offset string),
+ *   but only for media of at least `MIN_RESUME_DURATION_S` — short clips/tracks
+ *   always restart from the beginning (their position is still saved, so the
+ *   library's progress display keeps working).
  * - `timeupdate`, throttled to ~5s → PATCH `{progress, locator}`.
  * - `pause` → PATCH (so a deliberate stop is captured immediately).
  * - tab hide / SPA unmount → a final flush.
@@ -23,6 +26,9 @@ import { updateProgress } from "../lib/library-api";
  * (HTMLVideoElement) each get a correctly-typed ref.
  */
 const THROTTLE_MS = 5000;
+// Media shorter than this never resumes mid-way — rewatching/relistening from
+// the start is cheaper than landing in the middle of a short clip or track.
+const MIN_RESUME_DURATION_S = 10 * 60;
 
 export interface MediaProgressHandlers<T extends HTMLMediaElement> {
   /** Attach to the media element so the hook can read its `currentTime`/`duration`. */
@@ -79,14 +85,14 @@ export function useMediaProgress<T extends HTMLMediaElement>(
   const onLoadedMetadata = useCallback(() => {
     const el = mediaRef.current;
     if (!el || !resumeLocator) return;
+    // Short media restarts from the beginning instead of resuming. An unknown
+    // duration (non-finite at loadedmetadata) counts as short: without a length
+    // we can't tell it's long enough to be worth dropping into mid-way.
+    if (!Number.isFinite(el.duration) || el.duration < MIN_RESUME_DURATION_S) return;
     const seconds = Number(resumeLocator);
     // Seek only to a sane position strictly inside the media; a stale locator at
     // or past the end would leave the element parked on the last frame.
-    if (
-      Number.isFinite(seconds) &&
-      seconds > 0 &&
-      (!Number.isFinite(el.duration) || seconds < el.duration)
-    ) {
+    if (Number.isFinite(seconds) && seconds > 0 && seconds < el.duration) {
       try {
         el.currentTime = seconds;
       } catch {
