@@ -16,6 +16,17 @@
 // there is no silent localhost fallback here (see .env.example).
 export const API_BASE_URL: string = import.meta.env.VITE_API_URL;
 
+/**
+ * Join an API path onto `API_BASE_URL`, PRESERVING any path prefix on the base
+ * (e.g. a reverse-proxy prefix like `http://host/atrium-api`). The obvious
+ * `new URL(path, base)` is wrong here: a leading-slash path resolves against
+ * the origin and silently drops the base's path segment. `path` must start
+ * with "/". Every API URL in the app must be built through this.
+ */
+export function apiUrl(path: string): URL {
+  return new URL(API_BASE_URL.replace(/\/+$/, "") + path);
+}
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -58,7 +69,7 @@ export async function apiFetch(
   init?: RequestInit,
   options?: { skipAuthRedirect?: boolean },
 ): Promise<Response> {
-  const url = new URL(path, API_BASE_URL);
+  const url = apiUrl(path);
   const headers = new Headers(init?.headers);
   if (authToken) {
     headers.set("Authorization", `Bearer ${authToken}`);

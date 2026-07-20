@@ -4,7 +4,7 @@ import {
   type LibraryBook,
   type LibrarySort,
 } from "@ebook-reader/shared";
-import { apiFetch, API_BASE_URL, getAuthToken } from "./api-client";
+import { apiFetch, apiUrl, getAuthToken } from "./api-client";
 
 /**
  * Library API calls (decisions.md D24). Thin wrappers over the Fastify library
@@ -53,7 +53,7 @@ export async function updateProgress(
  * the token rides along as a query param instead (brief 09).
  */
 export function coverUrl(id: string): string {
-  const url = new URL(`/library/${id}/cover`, API_BASE_URL);
+  const url = apiUrl(`/library/${id}/cover`);
   const token = getAuthToken();
   if (token) {
     url.searchParams.set("token", token);

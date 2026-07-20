@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthToken } from "../lib/api-client";
+import { apiUrl, getAuthToken } from "../lib/api-client";
 
 /**
  * Absolute URL for a book's original bytes, for a media element's `src` (brief
@@ -10,7 +10,7 @@ import { API_BASE_URL, getAuthToken } from "../lib/api-client";
  * so the element can seek/scrub without downloading the whole file.
  */
 export function mediaFileUrl(id: string): string {
-  const url = new URL(`/library/${id}/file`, API_BASE_URL);
+  const url = apiUrl(`/library/${id}/file`);
   const token = getAuthToken();
   if (token) {
     url.searchParams.set("token", token);

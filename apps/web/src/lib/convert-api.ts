@@ -1,5 +1,5 @@
 import { convertErrorSchema, type ConvertError } from "@ebook-reader/shared";
-import { API_BASE_URL } from "./api-client";
+import { apiUrl } from "./api-client";
 
 /**
  * `POST /convert` call for the TanStack Query `useMutation` in the uploader
@@ -51,7 +51,7 @@ export async function convertEpubToPdf(file: File): Promise<Blob> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(new URL("/convert", API_BASE_URL), {
+  const response = await fetch(apiUrl("/convert"), {
     method: "POST",
     body: formData,
   });

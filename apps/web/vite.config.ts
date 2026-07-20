@@ -31,18 +31,19 @@ export default defineConfig(({ mode }) => {
   const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
 
   // Runtime-cache match for cover thumbnails ONLY (brief 19). Covers are the
-  // one API surface we cache: immutable-per-book images fetched cross-origin by
-  // `<img src="<api-origin>/library/:id/cover?token=…">`. `coverUrl` builds those
-  // with `new URL("/library/…", API_BASE_URL)`, whose leading slash DROPS any
-  // path segment of the base — so the real request hits the API ORIGIN, not
-  // `<base>/library/…`. Derive the pattern from the origin to match exactly (and
-  // nothing else — no general API caching; auth + freshness stay server-driven).
-  // Regex-escaped; unanchored tail lets the `?token=…` query ride along.
-  const apiOrigin = new URL(env.VITE_API_URL).origin.replace(
+  // one API surface we cache: immutable-per-book images fetched by
+  // `<img src="<api-base>/library/:id/cover?token=…">`. `coverUrl` builds those
+  // via `apiUrl()`, which PRESERVES any path prefix on VITE_API_URL (e.g. a
+  // reverse-proxy prefix like /atrium-api) — so derive the pattern from the
+  // full base, not just the origin (and nothing else — no general API caching;
+  // auth + freshness stay server-driven). Regex-escaped; unanchored tail lets
+  // the `?token=…` query ride along.
+  const apiUrl = new URL(env.VITE_API_URL);
+  const apiBase = (apiUrl.origin + apiUrl.pathname.replace(/\/+$/, "")).replace(
     /[.*+?^${}()|[\]\\]/g,
     "\\$&",
   );
-  const coverUrlPattern = new RegExp(`^${apiOrigin}/library/[^/]+/cover`);
+  const coverUrlPattern = new RegExp(`^${apiBase}/library/[^/]+/cover`);
 
   return {
     base,
