@@ -17,6 +17,7 @@
     "@fontsource/source-serif-4": "5.2.9",
     "@tanstack/react-query": "5.101.2",
     "@tanstack/react-router": "1.170.17",
+    "@use-gesture/react": "^10.3.1",
     "epubjs": "0.3.93",
     "pdfjs-dist": "5.4.296",
     "perfect-freehand": "1.2.3",
