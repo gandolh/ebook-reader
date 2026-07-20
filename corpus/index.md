@@ -18,7 +18,7 @@ Catalog generated from each page's `summary:` frontmatter — run
 - [decisions.md](wiki/decisions.md) — Locked tech/design decisions (D1–D31) — the settled calls future briefs and reviews must not relitigate without an explicit revisit + log note.
 - [design.md](wiki/design.md) — The enforced "Quiet Paper" visual language (D27) — theme tokens, Playfair/Source Serif 4/Inter type roles, spacing/elevation rules, and the frontend conformance checklist.
 - [open-questions.md](wiki/open-questions.md) — The genuinely unresolved threads only — each deleted the moment it's answered (history lives in status.md + log.md).
-- [overview.md](wiki/overview.md) — What ebook-reader is in a paragraph — a personal, per-user-account, persistent-library PDF/EPUB reader; the orientation page.
+- [overview.md](wiki/overview.md) — What Atrium is in a paragraph — a personal, per-user-account media gallery (books, music, video) + a Notes tab; the orientation page.
 - [performance.md](wiki/performance.md) — Recorded live + build-time performance baseline of the current (post-code-split) build — initial JS transfer, chunk sizes, cover→first-page for PDF and EPUB, and EPUB open phases — plus how to reproduce the numbers.
 - [pwa.md](wiki/pwa.md) — The PWA layer (briefs 19–20) — installable shell via vite-plugin-pwa/generateSW with prompt-mode updates, cover-only runtime caching, and offline reading via a three-store IndexedDB (metadata/blobs/progress) with explicit per-book downloads and last-write-wins progress sync.
 - [reader.md](wiki/reader.md) — The reader experience — PDF + EPUB renderers sharing one Kindle-style frame: nav, TOC, search, themes, progress rail, resume, a paged⇄scroll mode toggle, and a shared running header.

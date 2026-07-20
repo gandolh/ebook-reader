@@ -3,9 +3,27 @@ summary: Dated snapshot of current state — a one-liner per brief/area and wher
 updated: 2026-07-16
 ---
 
-# Status — 2026-07-16
+# Status — 2026-07-20
 
-**Latest (2026-07-16 eve):** ✅ **Brief 23 shipped — media library
+**Latest (2026-07-20):** ✅ **The app is now "Atrium" — briefs 24–26 shipped
+(uncommitted — owner controls).** A rebrand + a new Notes subsystem, built via
+orchestrate and live-audited across monitor/laptop/tablet/mobile. **24:**
+identity swap to **Atrium** (wordmark, title, PWA manifest, favicon arch mark,
+neutral theme glyph, design-system header) — internal `@ebook-reader/*` npm
+scope kept by decision. **25:** per-type IA — `/books` `/music` `/videos`
+routes + nav tabs + shared `LibraryArea`, retiring the in-header media-type
+filter; per-media card shapes (book 2:3 / music square / video 16:9) + per-kind
+fallback glyphs + per-area grids. **26:** a **Notes** tab — paged notebook with
+perfect-freehand vector ink (pen/highlighter/eraser), movable typed text boxes,
+undo/redo, per-user server storage, debounced autosave, mobile/stylus. The
+audit caught + fixed 3 real Notes bugs (tool bar below the fold; strokes not
+committing via empty `getCoalescedEvents()`; giant-blob ink from
+normalized-coord degeneracy) + a redundant empty-area dropzone. Typecheck +
+build clean; [TP-06-RESULTS](../test-plans/TP-06-RESULTS.md) = PASS. Not
+exercised: populated music/video cards + playback (no sample media). See the
+2026-07-20 log entry + briefs 24–26.
+
+**Earlier (2026-07-16 eve):** ✅ **Brief 23 shipped — media library
 (uncommitted — owner controls)**. One gallery now holds books + music (mp3) +
 video (mp4/webm): `kind`/`durationSeconds` on the contract, `music-metadata`
 extraction (ID3 artist/album/track/genre map onto brief 21's grouping columns,
@@ -144,4 +162,7 @@ errors on a fresh load. Typecheck clean ×3.
 | 20 | PWA phase 2: offline reading | **done (2026-07-16, uncommitted)** |
 | 21 | Group library by metadata (author/series/subject) | **todo** |
 | 22 | Gutenberg discover page | **todo** |
-| 23 | Media library: music + video alongside books | **todo (filed 2026-07-16)** |
+| 23 | Media library: music + video alongside books | **done (2026-07-16)** |
+| 24 | Atrium rebrand: identity + design-system neutralize | **done (2026-07-20)** |
+| 25 | Per-type IA (Books/Music/Videos) + per-media card shapes | **done (2026-07-20)** |
+| 26 | Notes tab: paged ink + text boxes (perfect-freehand) | **done (2026-07-20)** |

@@ -97,3 +97,30 @@ export {
   authStatusSchema,
 } from "./auth.js";
 export type { LoginRequest, LoginResponse, AuthStatus } from "./auth.js";
+
+// --- Notes contract (brief 26) ---------------------------------------------
+export {
+  PAGE_ASPECT,
+  NOTE_TOOLS,
+  noteToolSchema,
+  strokePointSchema,
+  strokeSchema,
+  textBoxSchema,
+  notePageSchema,
+  noteSchema,
+  noteSummarySchema,
+  noteListSchema,
+  createNoteSchema,
+  updateNoteSchema,
+} from "./notes.js";
+export type {
+  NoteTool,
+  StrokePoint,
+  Stroke,
+  TextBox,
+  NotePage,
+  Note,
+  NoteSummary,
+  CreateNoteRequest,
+  UpdateNoteRequest,
+} from "./notes.js";

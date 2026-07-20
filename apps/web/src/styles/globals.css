@@ -1,18 +1,24 @@
 @import "tailwindcss";
 
 /*
- * ── "Quiet Paper" design system (corpus/wiki/design.md — enforced, D27) ──────
+ * ── "Quiet Gallery" design system (Atrium — corpus/wiki/design.md, D27) ──────
+ *
+ * The visual language for Atrium, a personal media gallery (books, music,
+ * video, notes). Evolved from the original book-reader "Quiet Paper" system:
+ * the calm, warm, typographic feel is kept; the book-only metaphors are not.
+ * The `--surface`/`--paper*` token IDENTIFIERS are retained (renaming them
+ * would churn every component className) but read as neutral gallery surfaces,
+ * not "paper".
  *
  * Two token layers, intentionally distinct:
  *
- * 1. --reader-* : the three READING THEMES (light/sepia/dark) applied to the
- *    PDF/EPUB reading surface + chrome via `data-theme`. Zustand's `theme`
- *    field drives which is active. Load-bearing; predates the design system.
- *    (Light bg/accent retuned to the Quiet Paper paper + faded-ink accent.)
+ * 1. --reader-* : the three THEMES (light/warm/dark) applied to the reading/
+ *    playback surface + chrome via `data-theme`. Zustand's `theme` field drives
+ *    which is active. Load-bearing; predates the design system.
  *
- * 2. --color-* Quiet Paper palette : the LIBRARY + chrome design tokens
- *    (paper surfaces, ink text, faded-ink primary). Theme-independent; used by
- *    the library home. Exposed to Tailwind via `@theme inline` below.
+ * 2. --color-* gallery palette : the LIBRARY + chrome design tokens (warm
+ *    off-white surfaces, ink text, faded-ink primary). Theme-independent base;
+ *    used across the gallery areas. Exposed to Tailwind via `@theme inline`.
  */
 :root,
 [data-theme="light"] {

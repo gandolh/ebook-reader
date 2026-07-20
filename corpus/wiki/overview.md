@@ -1,12 +1,24 @@
 ---
-summary: What ebook-reader is in a paragraph — a personal, per-user-account, persistent-library PDF/EPUB reader; the orientation page.
-updated: 2026-07-13
+summary: What Atrium is in a paragraph — a personal, per-user-account media gallery (books, music, video) + a Notes tab; the orientation page.
+updated: 2026-07-20
 ---
 
 # Overview
 
-**ebook-reader** is a personal ebook reader with **per-user accounts** and a
-**shared persistent library**.
+**Atrium** (renamed from "ebook-reader" in brief 24, 2026-07-20) is a personal
+**media gallery** with **per-user accounts** and a **shared persistent
+library** — books (PDF/EPUB), music (MP3), and video (MP4/WebM), plus a
+**Notes** tab for drawing and writing.
+
+Since brief 25 the home is split into per-type areas (`/books`, `/music`,
+`/videos`, `/notes`) via nav tabs rather than one unified gallery; each media
+type renders in its native card shape (book 2:3, music square, video 16:9).
+Notes (brief 26) are per-user paged notebooks with vector ink + typed text
+boxes, stored server-side. The name/design evolved but the internal npm scope
+`@ebook-reader/*` and the `books`/`library` code nouns were kept (see
+[decisions.md](decisions.md) D32).
+
+The original reader core is unchanged below:
 
 Upload a PDF or EPUB → it's saved and appears as a cover card in the library →
 reopen and read it anytime. Access is gated by **per-user accounts** (operator-

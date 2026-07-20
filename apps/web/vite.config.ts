@@ -67,10 +67,10 @@ export default defineConfig(({ mode }) => {
         // single (its <link> is hand-written in index.html, not injected here).
         includeManifestIcons: false,
         manifest: {
-          name: "Ebook Reader",
-          short_name: "Ebooks",
+          name: "Atrium",
+          short_name: "Atrium",
           description:
-            "Your personal library — upload PDFs and EPUBs, then read anywhere.",
+            "Your personal library of books, music, and video — open and enjoy anywhere.",
           // Standalone so the installed app drops the browser chrome and feels
           // like a native reader.
           display: "standalone",

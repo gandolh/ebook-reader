@@ -54,13 +54,18 @@ export function CoverCard({
   const progressPct = Math.round(book.progress * 100);
   const durationLabel = book.durationSeconds != null ? formatDuration(book.durationSeconds) : null;
 
+  // Per-media card shape (brief 25): books 2:3 portrait, music square (album
+  // art), video 16:9 landscape — each media type in its native aspect instead
+  // of everything squeezed into a book footprint.
+  const aspect = kind === "audio" ? "aspect-square" : kind === "video" ? "aspect-video" : "aspect-[2/3]";
+
   return (
     <div className="group flex flex-col gap-3">
       {/* Wrapper carries the hover lift so the cover art AND the offline
           toggle move together; the toggle is a sibling (not nested inside
           the open-book button) to keep the DOM free of nested interactive
           elements. */}
-      <div className="relative aspect-[2/3] w-full transition duration-200 group-hover:-translate-y-1">
+      <div className={`relative ${aspect} w-full transition duration-200 group-hover:-translate-y-1`}>
         <button
           type="button"
           onClick={() => onOpen(book)}
@@ -190,17 +195,18 @@ export function CoverArt({
   const showImage = kind !== "video" && book.hasCover && !imgFailed;
 
   if (kind === "audio") {
+    // The card itself is now square (brief 25), so album art fills it edge to
+    // edge (it's a 400×400 square — no distortion) rather than floating small
+    // on a paper ground.
     return showImage ? (
-      <div className="grid h-full w-full place-items-center bg-paper-container">
-        <img
-          src={coverUrl(book.id)}
-          alt=""
-          onError={onImgError}
-          className="aspect-square w-3/5 rounded-(--radius-cover) object-cover shadow-[0_4px_10px_-4px_rgba(28,27,27,0.3)]"
-        />
-      </div>
+      <img
+        src={coverUrl(book.id)}
+        alt=""
+        onError={onImgError}
+        className="h-full w-full object-cover"
+      />
     ) : (
-      <CoverFallback title={book.title} />
+      <CoverFallback title={book.title} kind="audio" />
     );
   }
 
@@ -212,7 +218,7 @@ export function CoverArt({
       className="h-full w-full object-cover"
     />
   ) : (
-    <CoverFallback title={book.title} />
+    <CoverFallback title={book.title} kind={kind} />
   );
 }
 

@@ -13,6 +13,7 @@ import {
 import { registerConvertRoute } from "./convert-route.js";
 import { backfillLibraryMetadata, registerLibraryRoutes } from "./library-routes.js";
 import { registerCatalogRoutes } from "./catalog-routes.js";
+import { registerNotesRoutes } from "./notes-routes.js";
 
 const app = Fastify({
   logger: {
@@ -59,6 +60,7 @@ registerAuthRoutes(app);
 registerConvertRoute(app);
 registerLibraryRoutes(app);
 registerCatalogRoutes(app);
+registerNotesRoutes(app);
 
 /**
  * Startup probe for `ebook-convert` (brief step 2). Missing Calibre is NOT

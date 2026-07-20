@@ -1,11 +1,12 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { z } from "zod";
 import { fileTypeSchema } from "@ebook-reader/shared";
 
 import { RootLayout } from "./routes/root-layout";
-import { Home } from "./routes/home";
+import { BooksArea, MusicArea, VideosArea } from "./routes/areas";
 import { Read } from "./routes/read";
 import { Discover } from "./routes/discover";
+import { Notes } from "./routes/notes";
 
 /**
  * Code-based route tree (no file-based plugin — keeps the shell dependency-
@@ -17,20 +18,56 @@ const rootRoute = createRootRoute({
   component: RootLayout,
 });
 
-// The library gallery's Stacks drill-in (brief 21): the focused group's key is
-// carried in the URL (not component state) so browser Back returns to the stack
-// index, a refresh restores the drilled page, and the offline fallback can
-// render it. Absent = the stack index (or, in Shelves view, ignored). Copies the
-// `readSearchSchema` pattern below — a Zod-validated optional string param.
-const homeSearchSchema = z.object({
+// `/` redirects to the default area (Books). Atrium's home is the per-type
+// areas, not a single unified gallery (brief 25).
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/books" });
+  },
+});
+
+// The gallery's Stacks drill-in (brief 21): the focused group's key rides in
+// the URL (not component state) so browser Back returns to the stack index, a
+// refresh restores the drilled page, and the offline fallback can render it.
+// All three area routes share this schema (a Zod-validated optional string).
+const areaSearchSchema = z.object({
   g: z.string().optional(),
 });
 
-const homeRoute = createRoute({
+const booksRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/",
-  validateSearch: homeSearchSchema,
-  component: Home,
+  path: "/books",
+  validateSearch: areaSearchSchema,
+  component: BooksArea,
+});
+
+const musicRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/music",
+  validateSearch: areaSearchSchema,
+  component: MusicArea,
+});
+
+const videosRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/videos",
+  validateSearch: areaSearchSchema,
+  component: VideosArea,
+});
+
+// `/notes` (brief 26) — one route, two views: the list, or the editor when
+// `?note=<id>` is present (mirrors `/read?book=`).
+const notesSearchSchema = z.object({
+  note: z.string().optional(),
+});
+
+const notesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/notes",
+  validateSearch: notesSearchSchema,
+  component: Notes,
 });
 
 // `format` is optional + type-safe (validated against the shared Zod enum) so
@@ -74,7 +111,15 @@ const discoverRoute = createRoute({
   component: Discover,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, readRoute, discoverRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  booksRoute,
+  musicRoute,
+  videosRoute,
+  notesRoute,
+  readRoute,
+  discoverRoute,
+]);
 
 // `basepath` matches Vite's `base` (import.meta.env.BASE_URL) so client-side
 // routing stays under the deploy sub-path (e.g. /ebook-reader/). It's "/" in dev,

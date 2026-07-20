@@ -68,6 +68,16 @@ export interface SessionUser {
   username: string;
 }
 
+/** A raw notes row (brief 26); `data` is JSON-encoded `NotePage[]`. */
+export interface NoteRow {
+  id: string;
+  user_id: string;
+  title: string;
+  data: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * One user's reading state for one book. Progress + resume position are
  * per-user (the library is shared, the place you're at is not).
@@ -126,6 +136,22 @@ db.exec(`
     PRIMARY KEY (user_id, book_id)
   );
 `);
+// Per-user notes (brief 26): a paged notebook with vector ink + text boxes,
+// stored as JSON in `data`. Per-user like reading_progress; cascades with the
+// user. Kept in its own statement so the books schema block stays focused.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notes (
+    id         TEXT NOT NULL PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS notes_user_updated
+    ON notes(user_id, updated_at DESC);
+`);
+
 // Enforce the sessions→users foreign key (off by default in SQLite).
 db.pragma("foreign_keys = ON");
 
@@ -380,4 +406,69 @@ export function upsertUserProgress(
   now: string,
 ): void {
   statements.upsertUserProgress.run(userId, bookId, progress, locator, now);
+}
+
+// --- Notes (brief 26) --------------------------------------------------------
+
+const noteStatements = {
+  listByUser: db.prepare<[string]>(
+    "SELECT * FROM notes WHERE user_id = ? ORDER BY updated_at DESC",
+  ),
+  getByUser: db.prepare<[string, string]>(
+    "SELECT * FROM notes WHERE id = ? AND user_id = ?",
+  ),
+  insert: db.prepare<NoteRow>(`
+    INSERT INTO notes (id, user_id, title, data, created_at, updated_at)
+    VALUES (@id, @user_id, @title, @data, @created_at, @updated_at)
+  `),
+  // Only the owner's row is touched; COALESCE lets a title-only or data-only
+  // PATCH leave the other column intact.
+  update: db.prepare<[string | null, string | null, string, string, string]>(`
+    UPDATE notes
+       SET title = COALESCE(?, title),
+           data  = COALESCE(?, data),
+           updated_at = ?
+     WHERE id = ? AND user_id = ?
+  `),
+  remove: db.prepare<[string, string]>("DELETE FROM notes WHERE id = ? AND user_id = ?"),
+};
+
+/** All of a user's notes, most-recently-updated first. */
+export function listNotes(userId: string): NoteRow[] {
+  return noteStatements.listByUser.all(userId) as NoteRow[];
+}
+
+/** One note, only if it belongs to `userId` (else undefined → the route 404s). */
+export function getNote(userId: string, id: string): NoteRow | undefined {
+  return noteStatements.getByUser.get(id, userId) as NoteRow | undefined;
+}
+
+export function insertNote(row: NoteRow): void {
+  noteStatements.insert.run(row);
+}
+
+/**
+ * Update a note's title and/or page data (both optional; null leaves the column
+ * unchanged). Returns whether a row was actually updated (false = not the
+ * owner / unknown id), so the route can 404.
+ */
+export function updateNote(
+  userId: string,
+  id: string,
+  fields: { title?: string; data?: string },
+  now: string,
+): boolean {
+  const info = noteStatements.update.run(
+    fields.title ?? null,
+    fields.data ?? null,
+    now,
+    id,
+    userId,
+  );
+  return info.changes > 0;
+}
+
+/** Delete a note if it belongs to `userId`; returns whether a row was removed. */
+export function deleteNote(userId: string, id: string): boolean {
+  return noteStatements.remove.run(id, userId).changes > 0;
 }

@@ -25,6 +25,10 @@ export function ContinueReading({
   const kind = book.kind ?? "book";
   const verb = kind === "audio" ? "listening" : kind === "video" ? "watching" : "reading";
   const pct = Math.round(book.progress * 100);
+  // Thumb matches the item's card shape (brief 25): square art for music,
+  // 16:9 for video, 2:3 for a book — with a wider box for the landscape video.
+  const thumbAspect = kind === "audio" ? "aspect-square" : kind === "video" ? "aspect-video" : "aspect-[2/3]";
+  const thumbWidth = kind === "video" ? "w-32 sm:w-40" : "w-20 sm:w-24";
 
   return (
     <section aria-label={`Continue ${verb}`}>
@@ -34,7 +38,7 @@ export function ContinueReading({
         aria-label={`Resume ${book.title} at ${pct}%`}
         className="group flex w-full items-stretch gap-5 rounded border border-line-soft/60 bg-paper-raised p-4 text-left shadow-[0_2px_8px_rgba(28,27,27,0.04)] transition hover:border-line-soft focus-visible:outline-2 focus-visible:outline-accent sm:gap-6 sm:p-5"
       >
-        <span className="relative block aspect-[2/3] w-20 shrink-0 self-center overflow-hidden rounded-(--radius-cover) bg-paper-container shadow-[0_8px_16px_-6px_rgba(28,27,27,0.18)] ring-1 ring-line-soft/40 sm:w-24">
+        <span className={`relative block ${thumbAspect} ${thumbWidth} shrink-0 self-center overflow-hidden rounded-(--radius-cover) bg-paper-container shadow-[0_8px_16px_-6px_rgba(28,27,27,0.18)] ring-1 ring-line-soft/40`}>
           <CoverArt book={book} imgFailed={imgFailed} onImgError={() => setImgFailed(true)} />
         </span>
 

@@ -26,28 +26,62 @@ export function AppHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line-soft/50 pb-5">
-      <div className="flex flex-col gap-1">
-        <Link
-          to="/"
-          className="w-fit rounded font-display text-2xl font-bold tracking-tight text-accent focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          ebook-reader
-        </Link>
-        {caption}
+    <header className="flex flex-col gap-4 border-b border-line-soft/50 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex flex-col gap-1">
+          <Link
+            to="/books"
+            className="w-fit rounded font-display text-2xl font-bold tracking-tight text-accent focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Atrium
+          </Link>
+          {caption}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {actions}
+          <ThemeToggle />
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        {actions}
-        <ThemeToggle />
-      </div>
+      <NavTabs />
     </header>
+  );
+}
+
+const NAV_TABS = [
+  { to: "/books", label: "Books" },
+  { to: "/music", label: "Music" },
+  { to: "/videos", label: "Videos" },
+  { to: "/notes", label: "Notes" },
+] as const;
+
+/**
+ * Primary area navigation (Atrium IA, brief 25) — Books · Music · Videos as
+ * peer destinations. The old in-header All/Books/Music/Videos *filter* is now
+ * these tabs. Quiet: Inter label, accent reserved for the active tab's text +
+ * underline; horizontally scrollable if it ever overflows on a narrow phone.
+ */
+function NavTabs() {
+  return (
+    <nav aria-label="Library" className="-mb-4 flex items-center gap-1 overflow-x-auto">
+      {NAV_TABS.map((tab) => (
+        <Link
+          key={tab.to}
+          to={tab.to}
+          className="rounded-t border-b-2 border-transparent px-3 py-2 font-ui text-sm font-medium whitespace-nowrap text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+          activeProps={{ className: "border-accent text-ink font-semibold" }}
+        >
+          {tab.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
 const THEMES: { value: Theme; label: string; glyph: ReactNode }[] = [
   { value: "light", label: "Light theme", glyph: <SunGlyph /> },
-  { value: "sepia", label: "Sepia theme", glyph: <BookGlyph /> },
+  { value: "sepia", label: "Warm theme", glyph: <ContrastGlyph /> },
   { value: "dark", label: "Dark theme", glyph: <MoonGlyph /> },
 ];
 
@@ -100,11 +134,14 @@ function SunGlyph() {
   );
 }
 
-function BookGlyph() {
+// Neutral "warm tone" glyph for the sepia theme — a half-filled contrast disc
+// (a tonal mark, not the old book motif) so the theme control carries no
+// book-specific metaphor in the media gallery.
+function ContrastGlyph() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={ICON} aria-hidden>
-      <path strokeLinejoin="round" d="M12 6c-1.5-1.2-3.7-2-6-2-1 0-2 .1-3 .4v13c1-.3 2-.4 3-.4 2.3 0 4.5.8 6 2 1.5-1.2 3.7-2 6-2 1 0 2 .1 3 .4v-13c-1-.3-2-.4-3-.4-2.3 0-4.5.8-6 2Z" />
-      <path strokeLinecap="round" d="M12 6v14" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

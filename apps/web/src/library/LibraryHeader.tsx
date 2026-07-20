@@ -1,16 +1,15 @@
 import { useRef, type KeyboardEvent } from "react";
 
-import type { GroupView, LibraryTypeFilter } from "../lib/library-prefs";
+import type { GroupView } from "../lib/library-prefs";
 
 /**
- * Library-scoped controls. The app shell itself (wordmark + theme toggle)
- * moved to `components/AppHeader.tsx` so /discover shares it; what remains
- * here are the controls that scope the library SHELF — the media-type filter
- * and the Shelves⇄Stacks view toggle — which now render beside the "Recent
- * Reads" heading (they're peers of Group by / Sort by, all narrowing the same
- * grid), not in the global header.
+ * Library-scoped controls. The app shell itself (wordmark + nav + theme toggle)
+ * lives in `components/AppHeader.tsx`; what remains here is the Shelves⇄Stacks
+ * view toggle, which renders beside a `LibraryArea` heading as a peer of Group
+ * by / Sort by. The old media-type filter was retired in brief 25 — the media
+ * type is now the nav (Books / Music / Videos), not an in-grid control.
  *
- * `StorageCaption` (brief 20 item 2) also lives here: home passes it into
+ * `StorageCaption` (brief 20 item 2) also lives here: an area passes it into
  * `AppHeader`'s caption slot.
  */
 
@@ -72,73 +71,6 @@ export function ViewToggle({
             }`}
           >
             {v.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-const TYPE_FILTERS: { value: LibraryTypeFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "book", label: "Books" },
-  { value: "audio", label: "Music" },
-  { value: "video", label: "Videos" },
-];
-
-/**
- * The media-type filter (brief 23c step 6): a quiet four-segment control —
- * All / Books / Music / Videos — narrowing the gallery to a single `kind`
- * *before* grouping runs. Same visual family as `ViewToggle` on purpose (Inter
- * `label-caps`, hairline border, `2px` radius segments, active fill
- * `paper-container-high`, no accent besides the focus ring) so the two
- * controls read as one system rather than two competing widgets.
- */
-export function TypeFilterControl({
-  value,
-  onChange,
-}: {
-  value: LibraryTypeFilter;
-  onChange: (filter: LibraryTypeFilter) => void;
-}) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
-    const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
-    if (!forward && !back) return;
-    e.preventDefault();
-    const current = TYPE_FILTERS.findIndex((f) => f.value === value);
-    const next = (current + (forward ? 1 : TYPE_FILTERS.length - 1)) % TYPE_FILTERS.length;
-    onChange(TYPE_FILTERS[next].value);
-    refs.current[next]?.focus();
-  }
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Media type"
-      onKeyDown={onKeyDown}
-      className="flex items-center rounded border border-line-soft/60 bg-paper-low p-0.5"
-    >
-      {TYPE_FILTERS.map((f, i) => {
-        const active = value === f.value;
-        return (
-          <button
-            key={f.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            tabIndex={active ? 0 : -1}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            onClick={() => onChange(f.value)}
-            className={`rounded-[3px] px-3 py-1.5 font-ui text-xs font-semibold tracking-[0.08em] uppercase transition focus-visible:outline-2 focus-visible:outline-accent ${
-              active ? "bg-paper-raised text-ink shadow-sm" : "text-ink-variant hover:text-ink"
-            }`}
-          >
-            {f.label}
           </button>
         );
       })}

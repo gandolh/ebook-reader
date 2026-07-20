@@ -1,0 +1,668 @@
+import { getStroke } from "perfect-freehand";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  PAGE_ASPECT,
+  type NotePage,
+  type Stroke,
+  type StrokePoint,
+  type TextBox,
+} from "@ebook-reader/shared";
+
+import { useNote, useSaveNote } from "./use-notes";
+
+/**
+ * The note editor (brief 26) — a paged notebook page with vector ink
+ * (perfect-freehand) + movable typed text boxes. Coordinates are normalized to
+ * the page box (width 1, height PAGE_ASPECT) so a note drawn on a phone renders
+ * identically on a monitor. Autosaves (debounced PATCH) like the reader's
+ * progress flush.
+ *
+ * The page sheet is deliberately a light "paper" surface in every theme (a
+ * sheet of paper looks the same; the desk around it changes) so dark ink stays
+ * legible in dark mode; the surrounding chrome themes normally.
+ */
+
+type Tool = "pen" | "highlighter" | "eraser" | "text";
+
+const PALETTE = ["#1c1b1b", "#30568b", "#ba1a1a", "#2f7d4f", "#e8a72c"] as const;
+// Nib widths as a fraction of page width (resolution-independent).
+const THICKNESS = [0.004, 0.007, 0.012] as const;
+const HIGHLIGHTER_SCALE = 4;
+const ERASE_RADIUS = 0.02;
+// perfect-freehand's smoothing/streamline math is tuned for pixel-scale inputs;
+// running it on tiny normalized (0..1) coordinates degenerates into huge blobs.
+// So compute stroke geometry in a scaled-up viewBox space (points ×VB, size
+// ×VB) while storage stays normalized. The SVG uses the same viewBox.
+const STROKE_VB = 1000;
+
+const BLANK_PAGE: NotePage = { strokes: [], texts: [] };
+
+/** Build an SVG path string from a perfect-freehand outline. */
+function outlineToPath(outline: number[][]): string {
+  if (!outline.length) return "";
+  const d = outline.reduce(
+    (acc, [x0, y0], i, arr) => {
+      const [x1, y1] = arr[(i + 1) % arr.length];
+      acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+      return acc;
+    },
+    ["M", ...outline[0], "Q"] as (string | number)[],
+  );
+  d.push("Z");
+  return d.join(" ");
+}
+
+/** perfect-freehand outline for a stroke, computed in the scaled viewBox space. */
+function strokePath(stroke: Stroke): string {
+  const realPressure = stroke.points.some((p) => p[2] > 0 && p[2] !== 0.5);
+  const scaled = stroke.points.map((p) => [p[0] * STROKE_VB, p[1] * STROKE_VB, p[2]]);
+  const outline = getStroke(scaled, {
+    size: stroke.size * STROKE_VB,
+    thinning: stroke.tool === "highlighter" ? 0 : 0.55,
+    smoothing: 0.5,
+    streamline: 0.5,
+    simulatePressure: !realPressure,
+  });
+  return outlineToPath(outline);
+}
+
+export function NoteEditor({ id }: { id: string }) {
+  const navigate = useNavigate();
+  const query = useNote(id);
+  const save = useSaveNote(id);
+
+  const [title, setTitle] = useState("");
+  const [pages, setPages] = useState<NotePage[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  const [tool, setTool] = useState<Tool>("pen");
+  const [color, setColor] = useState<string>(PALETTE[0]);
+  const [thickness, setThickness] = useState(1);
+
+  // Undo/redo stacks of page snapshots (structural changes only).
+  const undoRef = useRef<NotePage[][]>([]);
+  const redoRef = useRef<NotePage[][]>([]);
+  const [histTick, setHistTick] = useState(0);
+
+  // Seed local editing state once the note arrives (never re-seed — the editor
+  // owns the open note; a refetch must not clobber in-flight edits).
+  useEffect(() => {
+    if (query.data && !loaded) {
+      setTitle(query.data.title);
+      setPages(query.data.pages.length ? query.data.pages : [BLANK_PAGE]);
+      setLoaded(true);
+    }
+  }, [query.data, loaded]);
+
+  const page = pages[pageIndex] ?? BLANK_PAGE;
+
+  const snapshot = useCallback(() => {
+    undoRef.current.push(structuredClone(pages));
+    if (undoRef.current.length > 50) undoRef.current.shift();
+    redoRef.current = [];
+    setHistTick((t) => t + 1);
+  }, [pages]);
+
+  const mutatePage = useCallback(
+    (fn: (p: NotePage) => NotePage) => {
+      setPages((prev) => prev.map((p, i) => (i === pageIndex ? fn(p) : p)));
+    },
+    [pageIndex],
+  );
+
+  function undo() {
+    const prev = undoRef.current.pop();
+    if (!prev) return;
+    redoRef.current.push(structuredClone(pages));
+    setPages(prev);
+    setPageIndex((i) => Math.min(i, prev.length - 1));
+    setHistTick((t) => t + 1);
+  }
+  function redo() {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current.push(structuredClone(pages));
+    setPages(next);
+    setHistTick((t) => t + 1);
+  }
+
+  // --- Autosave (debounced) + flush on unmount/hide -------------------------
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (!loaded) return;
+    dirtyRef.current = true;
+    const t = setTimeout(() => {
+      if (dirtyRef.current) {
+        save.mutate({ title: title.trim() || "Untitled note", pages });
+        dirtyRef.current = false;
+      }
+    }, 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, pages, loaded]);
+
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    const flush = () => {
+      if (dirtyRef.current) {
+        saveRef.current.mutate({ title: title.trim() || "Untitled note", pages });
+        dirtyRef.current = false;
+      }
+    };
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", flush);
+      flush();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, pages]);
+
+  if (query.isLoading || !loaded) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-reader-bg text-ink">
+        <p className="text-ink-variant">Opening note…</p>
+      </main>
+    );
+  }
+  if (query.isError) {
+    return (
+      <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-12 text-ink">
+        <h1 className="font-display text-2xl font-semibold">Couldn't open this note</h1>
+        <Link to="/notes" className="w-fit rounded border border-line-soft px-4 py-2 text-sm font-medium">
+          Back to notes
+        </Link>
+      </main>
+    );
+  }
+
+  const canUndo = undoRef.current.length > 0;
+  const canRedo = redoRef.current.length > 0;
+  void histTick;
+
+  return (
+    <div className="flex min-h-screen flex-col bg-reader-bg text-ink">
+      {/* Top bar: back, title, page nav, undo/redo */}
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line-soft/50 bg-paper/90 px-4 py-2.5 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/notes" })}
+          className="rounded px-2 py-1 font-ui text-sm font-medium text-ink-variant transition hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+          aria-label="Back to notes"
+        >
+          ← Notes
+        </button>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          aria-label="Note title"
+          className="min-w-0 flex-1 rounded bg-transparent px-1 font-display text-lg font-semibold text-ink outline-none focus:bg-paper-low"
+          placeholder="Untitled note"
+        />
+        {/* Page navigation lives in the always-visible header (the page sheet
+            is taller than the viewport, so an in-flow strip would fall below
+            the fold on desktop). */}
+        <div className="flex items-center gap-0.5 rounded-full bg-paper-low px-1.5 py-1 font-ui text-xs text-ink-variant">
+          <button
+            type="button"
+            disabled={pageIndex === 0}
+            onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
+            className="px-1.5 text-base disabled:opacity-30"
+            aria-label="Previous page"
+          >
+            ‹
+          </button>
+          <span className="tabular-nums" aria-label={`Page ${pageIndex + 1} of ${pages.length}`}>
+            {pageIndex + 1}/{pages.length}
+          </span>
+          <button
+            type="button"
+            disabled={pageIndex === pages.length - 1}
+            onClick={() => setPageIndex((i) => Math.min(pages.length - 1, i + 1))}
+            className="px-1.5 text-base disabled:opacity-30"
+            aria-label="Next page"
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              snapshot();
+              setPages((prev) => [...prev, structuredClone(BLANK_PAGE)]);
+              setPageIndex(pages.length);
+            }}
+            className="ml-1 border-l border-line-soft/50 pl-1.5 text-accent"
+            aria-label="Add page"
+          >
+            + Page
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          <IconBtn label="Undo" disabled={!canUndo} onClick={undo}>↶</IconBtn>
+          <IconBtn label="Redo" disabled={!canRedo} onClick={redo}>↷</IconBtn>
+        </div>
+      </header>
+
+      {/* Page sheet — bottom padding clears the fixed tool bar. */}
+      <div className="flex flex-1 justify-center overflow-auto px-4 pt-6 pb-28">
+        <NoteSheet
+          page={page}
+          tool={tool}
+          color={color}
+          thickness={THICKNESS[thickness]}
+          onBeginChange={snapshot}
+          onMutatePage={mutatePage}
+        />
+      </div>
+
+      {/* Tool bar — bottom sheet on mobile, static bar on desktop */}
+      <Toolbar
+        tool={tool}
+        setTool={setTool}
+        color={color}
+        setColor={setColor}
+        thickness={thickness}
+        setThickness={setThickness}
+      />
+    </div>
+  );
+}
+
+/**
+ * The drawing surface for one page: a light paper sheet with an SVG ink layer
+ * (committed strokes + the live stroke) and absolutely-positioned text boxes.
+ * All pointer input (mouse / touch / stylus) flows through here.
+ */
+function NoteSheet({
+  page,
+  tool,
+  color,
+  thickness,
+  onBeginChange,
+  onMutatePage,
+}: {
+  page: NotePage;
+  tool: Tool;
+  color: string;
+  thickness: number;
+  onBeginChange: () => void;
+  onMutatePage: (fn: (p: NotePage) => NotePage) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(800);
+  // `live` drives the in-progress preview render; `pointsRef` is the
+  // authoritative point buffer read at commit time (state is async).
+  const [live, setLive] = useState<StrokePoint[] | null>(null);
+  const pointsRef = useRef<StrokePoint[]>([]);
+  const drawing = useRef(false);
+  const activePointer = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+
+  const toNorm = useCallback((clientX: number, clientY: number): [number, number] => {
+    const rect = ref.current!.getBoundingClientRect();
+    // Divide both axes by width so the aspect ratio is preserved (y ∈ 0..ASPECT).
+    return [(clientX - rect.left) / rect.width, (clientY - rect.top) / rect.width];
+  }, []);
+
+  const eraseAt = useCallback(
+    (nx: number, ny: number) => {
+      onMutatePage((p) => {
+        const kept = p.strokes.filter(
+          (s) => !s.points.some((pt) => Math.hypot(pt[0] - nx, pt[1] - ny) < ERASE_RADIUS + s.size),
+        );
+        return kept.length === p.strokes.length ? p : { ...p, strokes: kept };
+      });
+    },
+    [onMutatePage],
+  );
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    // Single active pointer → basic palm rejection (a resting palm's touch is
+    // ignored while another pointer is drawing).
+    if (activePointer.current !== null) return;
+
+    if (tool === "text") {
+      // Clicking empty space with the text tool places a new box.
+      if ((e.target as HTMLElement).closest("[data-textbox]")) return;
+      const [nx, ny] = toNorm(e.clientX, e.clientY);
+      onBeginChange();
+      const box: TextBox = { id: crypto.randomUUID(), x: nx, y: ny, w: 0.4, text: "", size: 0.03 };
+      onMutatePage((p) => ({ ...p, texts: [...p.texts, box] }));
+      return;
+    }
+
+    activePointer.current = e.pointerId;
+    // setPointerCapture can throw for an already-released/synthetic pointer; a
+    // failed capture just means moves outside the element are missed, not a crash.
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* non-fatal */
+    }
+    drawing.current = true;
+    const [nx, ny] = toNorm(e.clientX, e.clientY);
+    if (tool === "eraser") {
+      onBeginChange();
+      eraseAt(nx, ny);
+      return;
+    }
+    const first: StrokePoint = [nx, ny, e.pressure || 0.5];
+    pointsRef.current = [first];
+    setLive([first]);
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!drawing.current || e.pointerId !== activePointer.current) return;
+    // Recover the high-frequency samples between frames for smooth fast strokes.
+    // getCoalescedEvents() can return an empty array (synthetic events, some
+    // browsers) — fall back to the event itself so points aren't dropped.
+    const coalesced = e.nativeEvent.getCoalescedEvents?.();
+    const events = coalesced && coalesced.length ? coalesced : [e.nativeEvent];
+    if (tool === "eraser") {
+      for (const ev of events) {
+        const [nx, ny] = toNorm(ev.clientX, ev.clientY);
+        eraseAt(nx, ny);
+      }
+      return;
+    }
+    for (const ev of events) {
+      const [nx, ny] = toNorm(ev.clientX, ev.clientY);
+      pointsRef.current.push([nx, ny, ev.pressure || 0.5]);
+    }
+    setLive([...pointsRef.current]);
+  }
+
+  function endStroke() {
+    const wasDrawing = drawing.current;
+    drawing.current = false;
+    activePointer.current = null;
+    if (!wasDrawing || tool === "eraser") return;
+    const pts = pointsRef.current;
+    pointsRef.current = [];
+    setLive(null);
+    if (pts.length > 1) {
+      const size = tool === "highlighter" ? thickness * HIGHLIGHTER_SCALE : thickness;
+      const stroke: Stroke = {
+        tool: tool === "highlighter" ? "highlighter" : "pen",
+        color,
+        size,
+        points: pts,
+      };
+      onBeginChange();
+      onMutatePage((p) => ({ ...p, strokes: [...p.strokes, stroke] }));
+    }
+  }
+
+  const height = width * PAGE_ASPECT;
+
+  return (
+    <div
+      ref={ref}
+      className="relative w-full max-w-3xl shrink-0 touch-none overflow-hidden rounded-md shadow-[0_4px_20px_-6px_rgba(0,0,0,0.25)] ring-1 ring-black/10"
+      style={{
+        height,
+        background: "#fcfbf8",
+        cursor: tool === "eraser" ? "cell" : tool === "text" ? "text" : "crosshair",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endStroke}
+      onPointerCancel={endStroke}
+      onPointerLeave={(e) => {
+        if (drawing.current && e.pointerId === activePointer.current) endStroke();
+      }}
+    >
+      <svg
+        viewBox={`0 0 ${STROKE_VB} ${STROKE_VB * PAGE_ASPECT}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+      >
+        {page.strokes.map((s, i) => (
+          <path
+            key={i}
+            d={strokePath(s)}
+            fill={s.color}
+            fillOpacity={s.tool === "highlighter" ? 0.4 : 1}
+          />
+        ))}
+        {live && live.length > 0 && (
+          <path
+            d={strokePath({
+              tool: tool === "highlighter" ? "highlighter" : "pen",
+              color,
+              size: tool === "highlighter" ? thickness * HIGHLIGHTER_SCALE : thickness,
+              points: live,
+            })}
+            fill={color}
+            fillOpacity={tool === "highlighter" ? 0.4 : 1}
+          />
+        )}
+      </svg>
+
+      {page.texts.map((box) => (
+        <TextBoxView
+          key={box.id}
+          box={box}
+          width={width}
+          editable={tool === "text"}
+          onBeginChange={onBeginChange}
+          onChange={(patch) =>
+            onMutatePage((p) => ({
+              ...p,
+              texts: p.texts.map((t) => (t.id === box.id ? { ...t, ...patch } : t)),
+            }))
+          }
+          onRemove={() =>
+            onMutatePage((p) => ({ ...p, texts: p.texts.filter((t) => t.id !== box.id) }))
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function TextBoxView({
+  box,
+  width,
+  editable,
+  onBeginChange,
+  onChange,
+  onRemove,
+}: {
+  box: TextBox;
+  width: number;
+  editable: boolean;
+  onBeginChange: () => void;
+  onChange: (patch: Partial<TextBox>) => void;
+  onRemove: () => void;
+}) {
+  const dragging = useRef<{ dx: number; dy: number } | null>(null);
+
+  function onGripDown(e: ReactPointerEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* non-fatal */
+    }
+    onBeginChange();
+    dragging.current = { dx: e.clientX - box.x * width, dy: e.clientY - box.y * width };
+  }
+  function onGripMove(e: ReactPointerEvent<HTMLButtonElement>) {
+    if (!dragging.current) return;
+    onChange({ x: (e.clientX - dragging.current.dx) / width, y: (e.clientY - dragging.current.dy) / width });
+  }
+  function onGripUp() {
+    dragging.current = null;
+  }
+
+  return (
+    <div
+      data-textbox
+      className="absolute"
+      style={{ left: box.x * width, top: box.y * width, width: box.w * width }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {editable && (
+        <div className="absolute -top-6 left-0 flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Move text box"
+            onPointerDown={onGripDown}
+            onPointerMove={onGripMove}
+            onPointerUp={onGripUp}
+            className="cursor-move touch-none rounded bg-accent/90 px-1.5 text-xs text-white"
+          >
+            ⠿
+          </button>
+          <button
+            type="button"
+            aria-label="Delete text box"
+            onClick={() => {
+              onBeginChange();
+              onRemove();
+            }}
+            className="rounded bg-danger/90 px-1.5 text-xs text-white"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <textarea
+        value={box.text}
+        readOnly={!editable}
+        onChange={(e) => onChange({ text: e.target.value })}
+        onFocus={onBeginChange}
+        rows={1}
+        placeholder={editable ? "Type…" : ""}
+        className="w-full resize-none bg-transparent leading-snug text-[#1c1b1b] outline-none"
+        style={{ fontSize: box.size * width, fontFamily: "var(--font-ui)" }}
+      />
+    </div>
+  );
+}
+
+function Toolbar({
+  tool,
+  setTool,
+  color,
+  setColor,
+  thickness,
+  setThickness,
+}: {
+  tool: Tool;
+  setTool: (t: Tool) => void;
+  color: string;
+  setColor: (c: string) => void;
+  thickness: number;
+  setThickness: (t: number) => void;
+}) {
+  const tools: { value: Tool; label: string; glyph: string }[] = [
+    { value: "pen", label: "Pen", glyph: "✎" },
+    { value: "highlighter", label: "Highlighter", glyph: "▄" },
+    { value: "eraser", label: "Eraser", glyph: "⌫" },
+    { value: "text", label: "Text", glyph: "T" },
+  ];
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center justify-center gap-3 border-t border-line-soft/50 bg-paper/95 px-4 py-2.5 backdrop-blur-sm">
+      <div role="radiogroup" aria-label="Tool" className="flex items-center gap-1 rounded border border-line-soft/60 bg-paper-low p-0.5">
+        {tools.map((t) => {
+          const active = tool === t.value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={t.label}
+              title={t.label}
+              onClick={() => setTool(t.value)}
+              className={`grid h-9 w-10 place-items-center rounded-[3px] text-base transition focus-visible:outline-2 focus-visible:outline-accent ${
+                active ? "bg-paper-raised text-accent shadow-sm" : "text-ink-variant hover:text-ink"
+              }`}
+            >
+              {t.glyph}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-1.5" aria-label="Color">
+        {PALETTE.map((c) => (
+          <button
+            key={c}
+            type="button"
+            aria-label={`Color ${c}`}
+            aria-pressed={color === c}
+            onClick={() => setColor(c)}
+            className={`h-6 w-6 rounded-full ring-1 ring-black/10 transition ${
+              color === c ? "outline-2 outline-offset-2 outline-accent" : ""
+            }`}
+            style={{ background: c }}
+          />
+        ))}
+      </div>
+
+      <div role="radiogroup" aria-label="Thickness" className="flex items-center gap-1 rounded border border-line-soft/60 bg-paper-low p-0.5">
+        {THICKNESS.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            role="radio"
+            aria-checked={thickness === i}
+            aria-label={`Thickness ${i + 1}`}
+            onClick={() => setThickness(i)}
+            className={`grid h-9 w-9 place-items-center rounded-[3px] transition focus-visible:outline-2 focus-visible:outline-accent ${
+              thickness === i ? "bg-paper-raised shadow-sm" : "hover:bg-paper-container"
+            }`}
+          >
+            <span className="rounded-full bg-ink" style={{ width: 4 + i * 4, height: 4 + i * 4 }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IconBtn({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid h-9 w-9 place-items-center rounded text-lg text-ink-variant transition hover:bg-paper-low hover:text-ink disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {children}
+    </button>
+  );
+}

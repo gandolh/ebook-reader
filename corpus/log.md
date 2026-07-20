@@ -1,5 +1,68 @@
 # Log
 
+## [2026-07-20] build+audit | Atrium rebrand (briefs 24–25) + Notes tab (brief 26)
+
+Promoted the two capture todos into three briefs and built them via orchestrate
+(inline — the frontend files are too coupled for subagent-splitting to pay off),
+then ran a live 4-breakpoint UI + functionality audit.
+
+**Brief 24 (identity):** wordmark / `<title>` / PWA manifest / README / root
+package name / globals.css system header → **Atrium**; arch-mark favicon;
+neutral contrast-disc sepia glyph. Internal npm scope `@ebook-reader/*` kept
+(documented — renaming = ~40 import churn + native reinstall, zero user value).
+**Brief 25 (IA + cards):** `/books` `/music` `/videos` routes (+ `/`→`/books`),
+nav tabs, shared `LibraryArea` per kind, retired the in-header type filter;
+per-media card shapes (2:3 / square / 16:9) + per-kind fallback glyphs + per-area
+grids; Continue strip kind-aware. **Brief 26 (Notes):** shared contract + API
+`notes` table/routes (per-user) + `/notes` list & editor with perfect-freehand
+vector ink (pen/highlighter/eraser/text, paged, undo/redo, autosave, mobile/
+stylus).
+
+**Audit (Playwright, monitor/laptop/tablet/mobile + themes) — PASS.** Caught &
+fixed 3 real Notes bugs (tool bar below the fold on desktop; strokes never
+committing due to empty `getCoalescedEvents()`; giant-blob ink from
+normalized-coord degeneracy) + a redundant empty-area dropzone; hardened
+`setPointerCapture`. Verified drawing/erase/text/pages/undo/persist/delete +
+per-user isolation; no horizontal overflow at any width; dark theme legible.
+Typecheck + build clean across all workspaces. See
+[test-plans/TP-06-RESULTS.md](test-plans/TP-06-RESULTS.md) and briefs 24–26 in
+`briefs/done/`. **Not exercised:** populated music/video cards + playback (no
+sample media on the box) — shape logic code-verified only. **Uncommitted —
+owner controls git.**
+
+## [2026-07-20] capture | Notes tab todo filed + rebrand name = Atrium
+
+Owner confirmed the rebrand name is **Atrium** (recorded in the rebrand todo's
+Acceptance) and requested a new **Notes** feature: open a note, draw + write,
+mobile responsive, Samsung Notes-like. Small inline research (Samsung Notes UX;
+perfect-freehand + Pointer Events for vector ink; tldraw/Excalidraw ruled out as
+heavy/off-brand). Grilled four decisions: **(1)** content = ink + movable typed
+text boxes on a page (not full doc-flow); **(2)** engine = vector ink from
+scratch (perfect-freehand, self-hosted); **(3)** storage = per-user server-side
+(reuses accounts + D30/D31); **(4)** structure = paged notebook (not infinite
+canvas). Captured as [todos/notes-tab.md](todos/notes-tab.md) with an
+implementation sketch, the rebrand-nav sequencing dependency, and open questions
+(tool set, eraser mode, templates, export, folders, offline). Corpus-only
+capture; nothing built. **Uncommitted — owner controls git.**
+
+## [2026-07-20] capture | Rebrand todo filed: ebook-reader → media gallery
+
+Owner asked to switch the app's **name + design** now that briefs 21–23 turned
+it into a books+music+video media gallery. Explored the codebase for every
+"ebook reader" surface (npm scopes, wordmark, 📖 favicon, PWA manifest,
+"Quiet Paper" design system, book-only metaphors, copy) and did a small inline
+design-research pass (Plex/Jellyfin per-media card shapes + per-type sections;
+2025 multi-media UX best practices). Grilled the owner on four decisions:
+**(1)** name direction = warm/curated, media-neutral (exact name still open);
+**(2)** design = evolve Quiet Paper, keep the calm, drop book metaphors — not a
+Plex-style pivot; **(3)** structure = split into separate Books/Music/Videos
+areas (nav, not in-place filter); **(4)** cards = per-media shapes (books 2:3,
+music square, video 16:9). Captured as
+[todos/rebrand-to-media-gallery.md](todos/rebrand-to-media-gallery.md) — an
+epic with a suggested 5-brief split and the exact-name pick as the one blocking
+open decision. Nothing built; corpus-only capture. **Uncommitted — owner
+controls git.**
+
 ## [2026-07-16] design | UI review implementation: hierarchy, conformance, reader immersion
 
 Screenshot-driven UI review (live browser, desktop 1280 + mobile 390, all three

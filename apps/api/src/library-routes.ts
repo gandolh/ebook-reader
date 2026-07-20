@@ -272,6 +272,17 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
     if (!row || !row.cover_path) {
       return reply.status(404).send({ error: "No cover for this book." });
     }
+    // The thumbnail file can be absent even when the row records a path — e.g. a
+    // library DB moved between machines (paths are absolute — see
+    // open-questions.md), or a thumbnail deleted out of band. Verify it exists
+    // first so a missing file is a clean 404 the <img> can fall back from,
+    // rather than a mid-stream 500 (which a cross-origin <img> surfaces as the
+    // noisy ERR_BLOCKED_BY_ORB).
+    try {
+      await stat(row.cover_path);
+    } catch {
+      return reply.status(404).send({ error: "No cover for this book." });
+    }
     reply.header("Content-Type", "image/jpeg").header("Cache-Control", "public, max-age=31536000, immutable");
     return reply.send(createReadStream(row.cover_path));
   });
